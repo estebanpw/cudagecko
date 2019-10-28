@@ -27,7 +27,7 @@ __constant__ uint64_t pow4_T[33]={3*1L, 3*4L, 3*16L, 3*64L, 3*256L, 3*1024L, 3*4
     (uint64_t)3*72057594037927936L, (uint64_t) 3*288230376151711744L, (uint64_t) 3*1152921504606846976L, (uint64_t) 3*4611686018427387904L};
 
 
-__global__ void kernel_register_fast_hash_rotational(Word * table, const char * sequence, ULLI offset) {
+__global__ void kernel_register_fast_hash_rotational(uint64_t * hashes, uint64_t * positions, const char * sequence, ULLI offset) {
 	
 
 
@@ -152,8 +152,8 @@ __global__ void kernel_register_fast_hash_rotational(Word * table, const char * 
 	
 	
 	//table[threadIdx.x + 32*i + 192 * blockIdx.x] = hash & bad;
-	table[threadIdx.x + 128 * blockIdx.x].hash = hash & bad;
-	table[threadIdx.x + 128 * blockIdx.x].pos = threadIdx.x + blockIdx.x * 16 + offset;
+	hashes[threadIdx.x + 128 * blockIdx.x] = hash & bad;
+	positions[threadIdx.x + 128 * blockIdx.x] = threadIdx.x + blockIdx.x * 128 + offset;
 	//table[threadIdx.x + 96 * blockIdx.x] = hash & bad;
 
 	
@@ -187,8 +187,8 @@ __global__ void kernel_register_fast_hash_rotational(Word * table, const char * 
 		*/
 
 		//table[threadIdx.x + blockIdx.x * blockDim.x*8 + blockDim.x * k] = hash & bad;
-		table[threadIdx.x + (i << 5) + 128 * blockIdx.x].hash = hash & bad;
-		table[threadIdx.x + (i << 5) + 128 * blockIdx.x].pos = threadIdx.x + blockIdx.x * 16 + offset;
+		hashes[threadIdx.x + (i << 5) + 128 * blockIdx.x] = hash & bad;
+		positions[threadIdx.x + (i << 5) + 128 * blockIdx.x] = threadIdx.x + blockIdx.x * 128 + offset;
 		
 	}
 	

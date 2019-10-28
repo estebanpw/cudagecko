@@ -2,4 +2,4 @@
 
 
 
-__global__ void kernel_register_fast_hash_rotational(Word * table, const char * sequence, ULLI offset);
+__global__ void kernel_register_fast_hash_rotational(uint64_t * hashes, uint64_t * positions, const char * sequence, ULLI offset);
