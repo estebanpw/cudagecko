@@ -17,3 +17,8 @@ typedef struct word{
     uint64_t hash;
     uint64_t pos;
 } Word;
+
+typedef struct hit{
+    uint64_t p1;
+    uint64_t p2;
+} Hit;
