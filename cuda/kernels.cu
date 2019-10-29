@@ -1,10 +1,4 @@
 #include "kernels.cuh"
-#define WARP_SIZE 32
-#define KMER_SIZE 32
-#define KMERS_PER_THREAD 3
-#define BYTES_PER_REGISTER 4
-
-#define ULLI unsigned long long int
 
 
 __constant__ uint64_t pow4[33]={1L, 4L, 16L, 64L, 256L, 1024L, 4096L, 16384L, 65536L,
@@ -188,7 +182,7 @@ __global__ void kernel_register_fast_hash_rotational(uint64_t * hashes, uint64_t
 
 		//table[threadIdx.x + blockIdx.x * blockDim.x*8 + blockDim.x * k] = hash & bad;
 		hashes[threadIdx.x + (i << 5) + 128 * blockIdx.x] = hash & bad;
-		positions[threadIdx.x + (i << 5) + 128 * blockIdx.x] = threadIdx.x + blockIdx.x * 128 + offset;
+		positions[threadIdx.x + (i << 5) + 128 * blockIdx.x] = threadIdx.x + (i << 5) + blockIdx.x * 128 + offset;
 		
 	}
 	
