@@ -1,6 +1,5 @@
 #include "kernels.cuh"
 
-
 __constant__ uint64_t pow4[33]={1L, 4L, 16L, 64L, 256L, 1024L, 4096L, 16384L, 65536L,
     262144L, 1048576L, 4194304L, 16777216L, 67108864L, 268435456L, 1073741824L, 4294967296L,
     17179869184L, 68719476736L, 274877906944L, 1099511627776L, 4398046511104L, 17592186044416L,
@@ -19,6 +18,82 @@ __constant__ uint64_t pow4_T[33]={3*1L, 3*4L, 3*16L, 3*64L, 3*256L, 3*1024L, 3*4
     (uint64_t)3*17179869184L, (uint64_t)3*68719476736L, (uint64_t)3*274877906944L, (uint64_t)3*1099511627776L, (uint64_t)3*4398046511104L, (uint64_t)3*17592186044416L,
     (uint64_t)3*70368744177664L, (uint64_t)3*281474976710656L, (uint64_t)3*1125899906842624L, (uint64_t)3*4503599627370496L, (uint64_t)3*18014398509481984L,
     (uint64_t)3*72057594037927936L, (uint64_t) 3*288230376151711744L, (uint64_t) 3*1152921504606846976L, (uint64_t) 3*4611686018427387904L};
+
+
+
+__global__ void kernel_frags_forward_register(uint64_t * h_p1, uint64_t * h_p2, uint64_t * left_offset, uint64_t * right_offset, const char * seq_x, const char * seq_y, uint64_t query_len, uint64_t ref_len){
+
+
+	// LEFT ALIGNMENT
+	int64_t warp_pos_x_left = h_p1[blockIdx.x];
+	int64_t warp_pos_y_left = h_p2[blockIdx.x];
+	int64_t thre_pos_x, thre_pos_y;
+	int score = 32;
+	int cell_score;
+
+	//if(threadIdx.x == 0) printf("checking hit %"PRIu64", %"PRIu64"\n", h_p1[blockIdx.x], h_p2[blockIdx.x]);
+
+	while(score > 0 && (warp_pos_x_left - 32) >= 0 && (warp_pos_y_left - 32) >= 0)
+	{
+		warp_pos_x_left -= 32;
+		warp_pos_y_left -= 32;
+		thre_pos_x = warp_pos_x_left + threadIdx.x;
+		thre_pos_y = warp_pos_y_left + threadIdx.x;
+		char v_x = seq_x[thre_pos_x];
+		char v_y = seq_y[thre_pos_y];
+
+		cell_score = (v_x == v_y);
+
+		//printf("I am %d :: %c and %c -> %d\n", threadIdx.x, v_x, v_y, cell_score);
+
+		for (int offset = 16; offset > 0; offset = offset >> 1)
+			cell_score += __shfl_down_sync(0xFFFFFFFF, cell_score, offset);
+
+		//if(threadIdx.x == 0) printf("Sum is %d\n", cell_score);
+		int idents = __shfl_sync(0xFFFFFFFF, cell_score, 0);
+		score = score + idents - (32-idents);
+
+
+
+		//if(threadIdx.x == 3) printf("Final score %d\n", score);
+
+		
+
+	}
+
+	// RIGHT ALIGNMENT
+	int64_t warp_pos_x_right = h_p1[blockIdx.x] + 32;
+	int64_t warp_pos_y_right = h_p2[blockIdx.x] + 32;
+	score = 32;
+
+	while(score > 0 && (warp_pos_x_right + 32) < query_len && (warp_pos_y_right + 32) < ref_len)
+	{
+		thre_pos_x = warp_pos_x_right + threadIdx.x;
+		thre_pos_y = warp_pos_y_right + threadIdx.x;
+		char v_x = seq_x[thre_pos_x];
+		char v_y = seq_y[thre_pos_y];
+
+		cell_score = (v_x == v_y);
+
+		for (int offset = 16; offset > 0; offset = offset >> 1)
+			cell_score += __shfl_down_sync(0xFFFFFFFF, cell_score, offset);
+		
+		
+		int idents = __shfl_sync(0xFFFFFFFF, cell_score, 0);
+		score = score + idents - (32-idents);
+
+		warp_pos_x_right += 32;
+		warp_pos_y_right += 32;
+
+	}
+
+	// Save at the end
+	if(threadIdx.x == 0){
+		left_offset[blockIdx.x] = h_p1[blockIdx.x] - (uint64_t) warp_pos_x_left;
+		right_offset[blockIdx.x] = (uint64_t) warp_pos_x_right - h_p1[blockIdx.x];
+	}
+
+}
 
 
 __global__ void kernel_register_fast_hash_rotational(uint64_t * hashes, uint64_t * positions, const char * sequence, ULLI offset) {
@@ -147,7 +222,7 @@ __global__ void kernel_register_fast_hash_rotational(uint64_t * hashes, uint64_t
 	
 	//table[threadIdx.x + 32*i + 192 * blockIdx.x] = hash & bad;
 	hashes[threadIdx.x + 128 * blockIdx.x] = hash & bad;
-	positions[threadIdx.x + 128 * blockIdx.x] = threadIdx.x + blockIdx.x * 128 + offset;
+	positions[threadIdx.x + 128 * blockIdx.x] = (threadIdx.x + blockIdx.x * 128 + offset) | (~bad);
 	//table[threadIdx.x + 96 * blockIdx.x] = hash & bad;
 
 	
@@ -157,7 +232,7 @@ __global__ void kernel_register_fast_hash_rotational(uint64_t * hashes, uint64_t
 
 	for(i=1; i<4; i++){
 		
-		
+		bad = 0xFFFFFFFFFFFFFFFF;
 		temp_value = __shfl_sync(0xFFFFFFFF, value, int_pos);
 		byte = (char) (temp_value >> ((kmer_start & 7) << 3));
 		++kmer_start;
@@ -182,7 +257,7 @@ __global__ void kernel_register_fast_hash_rotational(uint64_t * hashes, uint64_t
 
 		//table[threadIdx.x + blockIdx.x * blockDim.x*8 + blockDim.x * k] = hash & bad;
 		hashes[threadIdx.x + (i << 5) + 128 * blockIdx.x] = hash & bad;
-		positions[threadIdx.x + (i << 5) + 128 * blockIdx.x] = threadIdx.x + (i << 5) + blockIdx.x * 128 + offset;
+		positions[threadIdx.x + (i << 5) + 128 * blockIdx.x] = (threadIdx.x + (i << 5) + blockIdx.x * 128 + offset) | (~bad);
 		
 	}
 	

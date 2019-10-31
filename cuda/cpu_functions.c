@@ -50,7 +50,7 @@ uint64_t generate_hits(uint64_t words_at_once, uint64_t * diagonals, Hit * hits,
 }
 
 
-uint64_t filter_hits(uint64_t * diagonals, uint64_t * indexing_numbers, Hit * hits, Hit * filtered_hits, uint64_t n_hits_found){
+uint64_t filter_hits(uint64_t * diagonals, uint64_t * indexing_numbers, Hit * hits, uint64_t * filtered_hits_x, uint64_t * filtered_hits_y, uint64_t n_hits_found){
     
     if(n_hits_found == 0) return 0;
     int64_t diagonal = (int64_t) hits[indexing_numbers[0]].p1 - (int64_t) hits[indexing_numbers[0]].p2;
@@ -64,7 +64,8 @@ uint64_t filter_hits(uint64_t * diagonals, uint64_t * indexing_numbers, Hit * hi
 
             last_position = hits[indexing_numbers[t]].p1;
             diagonal = (int64_t) hits[indexing_numbers[t]].p1 - (int64_t) hits[indexing_numbers[t]].p2;
-            memcpy(&filtered_hits[t_kept], &hits[indexing_numbers[t]], sizeof(Hit));
+            filtered_hits_x[t_kept] = hits[indexing_numbers[t]].p1;
+            filtered_hits_y[t_kept] = hits[indexing_numbers[t]].p2;
             ++t_kept;
         }
         ++t;
@@ -125,7 +126,7 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
     while(pNum < argc){
         if(strcmp(av[pNum], "--help") == 0){
             fprintf(stdout, "USAGE:\n");
-            fprintf(stdout, "           GECKOCUDA -query [file] -ref [file] -device [device]\n");
+            fprintf(stdout, "           GECKOCUDA -query [file] -ref [file] -dev [device]\n");
             fprintf(stdout, "OPTIONAL:\n");
             fprintf(stdout, "           --write     Enables writing output\n");
             fprintf(stdout, "           --help      Shows help for program usage\n");
