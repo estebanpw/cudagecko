@@ -18,7 +18,7 @@ void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits
 
     uint64_t next_xStart, next_yStart, next_xEnd, next_yEnd, next_l;
 
-    uint64_t max_l = curr_l, max_id = 0;
+    uint64_t max_id = 0;
     uint64_t written_frags = 0;
 
     while(current + 1 < n_frags){

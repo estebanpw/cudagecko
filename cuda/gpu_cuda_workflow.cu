@@ -178,6 +178,7 @@ int main(int argc, char ** argv)
     uint64_t pos_in_query = 0, pos_in_ref = 0;
     while(pos_in_query < query_len){
 
+
         // Allocate memory in device for sequence chunk
         // We have to this here since later on we will have to free all memory to load the hits
         ret = cudaMalloc(&seq_dev_mem, words_at_once * sizeof(char));
@@ -196,6 +197,7 @@ int main(int argc, char ** argv)
         if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (4). Error: %d\n", ret); exit(-1); }
 
         fprintf(stdout, "[EXECUTING] Running split %d -> (%d%%)\n", split, (int)((100*pos_in_query)/query_len));
+
         uint64_t items_read = MIN(query_len - pos_in_query, words_at_once);
 
 
@@ -212,10 +214,13 @@ int main(int argc, char ** argv)
         ret = cudaMemset(values, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
         //number_of_blocks = (((items_read - KMER_SIZE + 1)) / (threads_number*4));
         //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_query);
-        number_of_blocks = ((items_read - KMER_SIZE + 1));
+        number_of_blocks = (items_read - KMER_SIZE + 1)/threads_number;
+        //printf("Going for blocks %"PRIu64" and items %"PRIu64" .wAtOnce: %"PRIu64"\n", number_of_blocks, items_read, words_at_once);
+
         kernel_index_global32<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_query);
         ret = cudaDeviceSynchronize();
         if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on query. Error: %d\n", ret); exit(-1); }
+
 
         ////////////////////////////////////////////////////////////////////////////////
         // Sort the query kmers
@@ -294,7 +299,7 @@ int main(int argc, char ** argv)
             ret = cudaMemset(values, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
             //number_of_blocks = (((items_read - KMER_SIZE + 1)) / (threads_number*4)); 
             //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
-            number_of_blocks = ((items_read - KMER_SIZE + 1));
+            number_of_blocks = ((items_read - KMER_SIZE + 1))/threads_number;
             kernel_index_global32<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on ref. Error: %d\n", ret); exit(-1); }

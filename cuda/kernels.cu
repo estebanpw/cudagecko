@@ -277,9 +277,10 @@ __global__ void kernel_index_global32(uint64_t * hashes, uint64_t * positions, c
 	uint64_t bad = 0xFFFFFFFFFFFFFFFF;
 
 	for(k=0; k<32; k++){
-	//for(k=0; k<1; k++){
 
 		char c = sequence[threadIdx.x + k + blockIdx.x * blockDim.x];
+		//if(threadIdx.x == 0) printf("%c", c);
+		//char c = sequence[0];
 
 		if(c == 'A') hash += 0;
 		if(c == 'C') hash += pow4[k];
@@ -289,6 +290,8 @@ __global__ void kernel_index_global32(uint64_t * hashes, uint64_t * positions, c
 		
 	}
 
+	// [0 - 32] * [0-N]* [32]
 	hashes[threadIdx.x + blockIdx.x * blockDim.x] = hash & bad;
+	//hashes[0] = hash & bad;
 	positions[threadIdx.x + blockIdx.x * blockDim.x] = (threadIdx.x + blockIdx.x * blockDim.x + offset) | (~bad);
 }
