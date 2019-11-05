@@ -5,6 +5,67 @@ void terror(const char * s) {
     exit(-1);
 }
 
+void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits_y, uint64_t * host_left_offset, uint64_t * host_right_offset, uint64_t n_frags, FILE * out){
+
+    
+    uint64_t current = 0;
+
+    uint64_t xStart = filtered_hits_x[current] - host_left_offset[current];
+    uint64_t xEnd = filtered_hits_x[current] + host_right_offset[current];
+    uint64_t yStart = filtered_hits_y[current] - host_left_offset[current];
+    uint64_t yEnd = filtered_hits_y[current] + host_right_offset[current];
+    uint64_t curr_l = xEnd - xStart;
+
+    uint64_t next_xStart, next_yStart, next_xEnd, next_yEnd, next_l;
+
+    uint64_t max_l = curr_l, max_id = 0;
+    uint64_t written_frags = 0;
+
+    while(current + 1 < n_frags){
+
+        next_xStart = filtered_hits_x[current+1] - host_left_offset[current+1];
+        next_xEnd = filtered_hits_x[current+1] + host_right_offset[current+1];
+        next_yStart = filtered_hits_y[current+1] - host_left_offset[current+1];
+        next_yEnd = filtered_hits_y[current+1] + host_right_offset[current+1];
+        next_l = next_xEnd - next_xStart;
+
+        // If they are overlapping (on both x and y)
+        if(xStart <= next_xEnd && next_xStart <= xEnd && yStart <= next_yEnd && next_yStart <= yEnd){
+
+            // If the new one is bigger
+            if(next_l > curr_l){
+                curr_l = next_l;
+                max_id = current+1;
+            }
+
+        }else{
+            //printf("%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64" l:%"PRIu64" does not overlap with \n", xStart, yStart, xEnd, yEnd, xEnd-xStart);
+            //printf("%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64" l:%"PRIu64"\n", next_xStart, next_yStart, next_xEnd, next_yEnd, next_xEnd-next_xStart);
+            uint64_t best_xStart = filtered_hits_x[max_id] - host_left_offset[max_id];
+            uint64_t best_xEnd = filtered_hits_x[max_id] + host_right_offset[max_id];
+            uint64_t best_yStart = filtered_hits_y[max_id] - host_left_offset[max_id];
+            uint64_t best_yEnd = filtered_hits_y[max_id] + host_right_offset[max_id];
+            uint64_t best_l = best_xEnd - best_xStart;
+
+            //printf("So I write: Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,%"PRIu64",75,75,0.75,0.75,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, best_l);
+            fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,%"PRIu64",75,75,0.75,0.75,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, best_l);
+            max_id = current+1;
+
+            xStart = filtered_hits_x[max_id] - host_left_offset[max_id];
+            xEnd = filtered_hits_x[max_id] + host_right_offset[max_id];
+            yStart = filtered_hits_y[max_id] - host_left_offset[max_id];
+            yEnd = filtered_hits_y[max_id] + host_right_offset[max_id];
+            curr_l = xEnd - xStart;
+
+            ++written_frags;
+        }
+
+        ++current;
+    }
+    fprintf(stdout, "[INFO] Remaining frags %"PRIu64" out of %"PRIu64"\n", written_frags, n_frags);
+
+}
+
 uint64_t generate_hits(uint64_t words_at_once, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
     uint64_t * keys_y, uint64_t * values_x, uint64_t * values_y, uint64_t query_len, uint64_t ref_len){
 

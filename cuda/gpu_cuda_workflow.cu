@@ -208,10 +208,12 @@ int main(int argc, char ** argv)
         if(ret != cudaSuccess){ fprintf(stderr, "Could not copy query sequence to device. Error: %d\n", ret); exit(-1); }
 
         // Run kmers
-        number_of_blocks = (((items_read - KMER_SIZE + 1)) / (threads_number*4));
         ret = cudaMemset(keys, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
         ret = cudaMemset(values, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
-        kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_query);
+        //number_of_blocks = (((items_read - KMER_SIZE + 1)) / (threads_number*4));
+        //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_query);
+        number_of_blocks = ((items_read - KMER_SIZE + 1));
+        kernel_index_global32<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_query);
         ret = cudaDeviceSynchronize();
         if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on query. Error: %d\n", ret); exit(-1); }
 
@@ -288,10 +290,12 @@ int main(int argc, char ** argv)
             if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device. Error: %d\n", ret); exit(-1); }
 
             // Run kmers
-            number_of_blocks = (((items_read - KMER_SIZE + 1)) / (threads_number*4)); 
             ret = cudaMemset(keys, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
             ret = cudaMemset(values, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
-            kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
+            //number_of_blocks = (((items_read - KMER_SIZE + 1)) / (threads_number*4)); 
+            //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
+            number_of_blocks = ((items_read - KMER_SIZE + 1));
+            kernel_index_global32<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on ref. Error: %d\n", ret); exit(-1); }
 
@@ -367,7 +371,8 @@ int main(int argc, char ** argv)
             //}
             //for(i=0; i<n_hits_found; i++){
                 //printf("%"PRIu64"\n", diagonals[i]);
-                //fprintf(out, "Frag,d:%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,32,32,32,1.0,1.0,0,0\n", diagonals[i], hits[i].p1, hits[i].p2, hits[i].p1+32, hits[i].p2+32);
+                //if(hits[i].p1 > 368000 && hits[i].p2 < 390000)
+                    //fprintf(out, "Frag,d:%"PRId64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,32,32,32,1.0,1.0,0,0\n", (int64_t) hits[i].p1 - (int64_t) hits[i].p2, hits[i].p1, hits[i].p2, hits[i].p1+32, hits[i].p2+32);
             //}
 
             ////////////////////////////////////////////////////////////////////////////////
@@ -418,10 +423,10 @@ int main(int argc, char ** argv)
 
             fprintf(stdout, "[INFO] Remaining hits %"PRIu64"\n", n_hits_kept);
 
-            for(i=0; i<n_hits_kept; i++){
+            //for(i=0; i<n_hits_kept; i++){
                 //printf("%"PRIu64"\n", diagonals[i]);
                 //fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,32,32,32,1.0,1.0,0,0\n", filtered_hits_x[i], filtered_hits_y[i], filtered_hits_x[i]+32, filtered_hits_y[i]+32);
-            }
+            //}
             
             ret = cudaFree(d_temp_storage);
             ret = cudaFree(device_hits);
@@ -442,7 +447,7 @@ int main(int argc, char ** argv)
             ret = cudaMalloc(&left_offset, words_at_once * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device offset left frags query. Error: %d\n", ret); exit(-1); }
             ret = cudaMalloc(&right_offset, words_at_once * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device offset right frags query. Error: %d\n", ret); exit(-1); }
 
-            ret = cudaMemcpy(seq_dev_mem, &ref_seq_host[pos_in_query-words_at_once], MIN(query_len - (pos_in_query - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy query sequence to device for frags. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(seq_dev_mem, &query_seq_host[pos_in_query-words_at_once], MIN(query_len - (pos_in_query - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy query sequence to device for frags. Error: %d\n", ret); exit(-1); }
             ret = cudaMemcpy(seq_dev_mem_aux, &ref_seq_host[pos_in_ref-words_at_once], MIN(ref_len - (pos_in_ref - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device for frags. Error: %d\n", ret); exit(-1); }
             
             ret = cudaMemcpy(device_filt_hits_x, filtered_hits_x, n_hits_kept * sizeof(uint64_t), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy filtered hits x in device. Error: %d\n", ret); exit(-1); }
@@ -467,18 +472,22 @@ int main(int argc, char ** argv)
             cudaFree(left_offset);
             cudaFree(right_offset);
 
-            int64_t prev_d = 0xFFFFFFFFFFFFFFFF;
-            uint64_t prev_right = 0;
+            /*
             for(i=0; i<n_hits_kept; i++){
                 //printf("Hit (%"PRIu64", %"PRIu64") yields offsets (%"PRIu64", %"PRIu64") diff: \n", filtered_hits_x[i], filtered_hits_y[i], host_left_offset[i], host_right_offset[i]);
                 uint64_t xStart = filtered_hits_x[i] - host_left_offset[i];
                 uint64_t xEnd = filtered_hits_x[i] + host_right_offset[i];
                 uint64_t yStart = filtered_hits_y[i] - host_left_offset[i];
                 uint64_t yEnd = filtered_hits_y[i] + host_right_offset[i];
-                if((xEnd - xStart) > 1)
-                    fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,%"PRIu64",32,32,1.0,1.0,0,0\n", xStart, yStart, xEnd, yEnd, xEnd - xStart);
+                
+                if((xEnd - xStart) > 99){
+                    fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,%"PRIu64",75,75,0.75,0.75,0,0\n", xStart, yStart, xEnd, yEnd, xEnd - xStart);
+                }
+            
                 
             }
+            */
+            filter_and_write_frags(filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, n_hits_kept, out);
 
         }
 
