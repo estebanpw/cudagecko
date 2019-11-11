@@ -97,6 +97,8 @@ int main(int argc, char ** argv)
     uint64_t query_len = get_seq_len(query);
     uint64_t ref_len = get_seq_len(ref);
 
+    fprintf(stdout, "[INFO] Qlen: %"PRIu64"; Rlen: %"PRIu64"\n", query_len, ref_len);
+
     // Check that sequence length complies
     if(MAX(query_len, ref_len) >= 2147483648){
         fprintf(stdout, "[WARNING] !!!!!!!!!!!!!!!!!!!!!!\n");
@@ -460,10 +462,15 @@ int main(int argc, char ** argv)
             ret = cudaMemset(left_offset, 0x0, n_hits_kept * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy left offset in device. Error: %d\n", ret); exit(-1); }
             ret = cudaMemset(right_offset, 0x0, n_hits_kept * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy right offset in device. Error: %d\n", ret); exit(-1); }
 
+            //
+            //for(i=n_hits_kept-1; i>1; i--){
+            //    printf(" Frag %"PRIu64" \t x: %.32s %"PRIu64"\n", i, &query_seq_host[filtered_hits_x[i]], filtered_hits_x[i]);
+            //    printf(" \t\t y: %.32s %"PRIu64"\n", &ref_seq_host[filtered_hits_y[i]], filtered_hits_y[i]);
+            //}
 
             number_of_blocks = n_hits_kept; 
             //number_of_blocks = 20; // REMOVE !!
-            kernel_frags_forward_register<<<number_of_blocks, threads_number>>>(device_filt_hits_x, device_filt_hits_y, left_offset, right_offset, seq_dev_mem, seq_dev_mem_aux, query_len, ref_len);
+            kernel_frags_forward_register<<<number_of_blocks, threads_number>>>(device_filt_hits_x, device_filt_hits_y, left_offset, right_offset, seq_dev_mem, seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len));
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Failed on generating forward frags. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
@@ -480,6 +487,7 @@ int main(int argc, char ** argv)
             /*
             for(i=0; i<n_hits_kept; i++){
                 //printf("Hit (%"PRIu64", %"PRIu64") yields offsets (%"PRIu64", %"PRIu64") diff: \n", filtered_hits_x[i], filtered_hits_y[i], host_left_offset[i], host_right_offset[i]);
+                
                 uint64_t xStart = filtered_hits_x[i] - host_left_offset[i];
                 uint64_t xEnd = filtered_hits_x[i] + host_right_offset[i];
                 uint64_t yStart = filtered_hits_y[i] - host_left_offset[i];
@@ -488,7 +496,18 @@ int main(int argc, char ** argv)
                 if((xEnd - xStart) > 99){
                     fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,%"PRIu64",75,75,0.75,0.75,0,0\n", xStart, yStart, xEnd, yEnd, xEnd - xStart);
                 }
-            
+                
+
+                if(host_left_offset[i] > 1000000 && host_right_offset[i] < 1000000){
+                    printf("Host left: %"PRIu64"\n", host_left_offset[i]);
+                    uint64_t xStart = filtered_hits_x[i] - host_left_offset[i];
+                    uint64_t xEnd = filtered_hits_x[i] + host_right_offset[i];
+                    uint64_t yStart = filtered_hits_y[i] - host_left_offset[i];
+                    uint64_t yEnd = filtered_hits_y[i] + host_right_offset[i];
+                    fprintf(stdout,  "hit pos %"PRIu64", %"PRIu64"\n", filtered_hits_x[i], filtered_hits_y[i]);
+                    fprintf(stdout, "Frag,L:%"PRIu64", HR: %"PRIu64", %"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,%"PRIu64",75,75,0.75,0.75,0,0\n", host_left_offset[i], host_right_offset[i], xStart, yStart, xEnd, yEnd, xEnd - xStart);
+                } 
+                //if() printf("Host r: %"PRIu64"\n", host_right_offset[i]);
                 
             }
             */

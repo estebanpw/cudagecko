@@ -84,6 +84,7 @@ uint64_t generate_hits(uint64_t words_at_once, uint64_t * diagonals, Hit * hits,
         
         
         if(keys_x[id_x] == keys_y[id_y] && values_x[id_x] != 0xFFFFFFFFFFFFFFFF && values_y[id_y] != 0xFFFFFFFFFFFFFFFF) {
+            
             // This is a hit
             //printf("Made hit: ");
             hits[n_hits_found].p1 = values_x[id_x];
