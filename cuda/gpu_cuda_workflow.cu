@@ -12,6 +12,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 //uint64_t filter_hits(hit_advanced * hits_in, ulong kmer_size, ulong n_hits_found);
+void print_header(FILE * out, uint64_t query_len, uint64_t ref_len);
 
 int main(int argc, char ** argv)
 {
@@ -42,15 +43,15 @@ int main(int argc, char ** argv)
         global_device_RAM = device.totalGlobalMem;
         fprintf(stdout, "\t\tGlobal mem   : %"PRIu64" (%"PRIu64" MB)\n", (uint64_t) global_device_RAM, (uint64_t) global_device_RAM / (1024*1024));
         local_device_RAM = device.sharedMemPerBlock;
-        fprintf(stdout, "\t\tLocal mem    : %"PRIu64" (%"PRIu64" KB)\n", (uint64_t) local_device_RAM, (uint64_t) local_device_RAM / (1024));
+        //fprintf(stdout, "\t\tLocal mem    : %"PRIu64" (%"PRIu64" KB)\n", (uint64_t) local_device_RAM, (uint64_t) local_device_RAM / (1024));
         compute_units = device.multiProcessorCount;
-        fprintf(stdout, "\t\tCompute units: %"PRIu64"\n", (uint64_t) compute_units);
+        //fprintf(stdout, "\t\tCompute units: %"PRIu64"\n", (uint64_t) compute_units);
         work_group_size_local = device.maxThreadsPerBlock;
-        fprintf(stdout, "\t\tMax work group size: %d\n", work_group_size_local);
+        //fprintf(stdout, "\t\tMax work group size: %d\n", work_group_size_local);
         memcpy(work_group_dimensions, device.maxThreadsDim, 3*sizeof(int));
-        fprintf(stdout, "\t\tWork size dimensions: (%d, %d, %d)\n", work_group_dimensions[0], work_group_dimensions[1], work_group_dimensions[2]);
-        fprintf(stdout, "\t\tWarp size: %d\n", device.warpSize);
-        fprintf(stdout, "\t\tGrid dimensions: (%d, %d, %d)\n", device.maxGridSize[0], device.maxGridSize[1], device.maxGridSize[2]);
+        //fprintf(stdout, "\t\tWork size dimensions: (%d, %d, %d)\n", work_group_dimensions[0], work_group_dimensions[1], work_group_dimensions[2]);
+        //fprintf(stdout, "\t\tWarp size: %d\n", device.warpSize);
+        //fprintf(stdout, "\t\tGrid dimensions: (%d, %d, %d)\n", device.maxGridSize[0], device.maxGridSize[1], device.maxGridSize[2]);
     }
     //selected_device = 3; // REMOVE --- ONLY FOR TESTING $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
@@ -62,11 +63,7 @@ int main(int argc, char ** argv)
 
     
     
-    ////////////////////////////////////////////////////////////////////////////////
-    // Make index dictionary
-    ////////////////////////////////////////////////////////////////////////////////
 
-    
 
     // Calculate how much ram we can use for every chunk
     uint64_t effective_global_ram =  (global_device_RAM - 100*1024*1024); //Minus 100 MBs
@@ -112,21 +109,60 @@ int main(int argc, char ** argv)
 
     char * query_seq_host = (char *) malloc(query_len * sizeof(char));
     char * ref_seq_host = (char *) malloc(ref_len * sizeof(char));
+    char * ref_rev_seq_host = (char *) malloc(ref_len * sizeof(char));
 
-    if(query_seq_host == NULL || ref_seq_host == NULL) terror("Could not allocate memory for sequences in host");
+    if(query_seq_host == NULL || ref_seq_host == NULL || ref_rev_seq_host == NULL) terror("Could not allocate memory for sequences in host");
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // Read sequences and reverse the reference
+    ////////////////////////////////////////////////////////////////////////////////
+
+    // Pointer to device memory allocating the query sequence, reference and reversed reference
+    char * seq_dev_mem = NULL, * seq_dev_mem_aux = NULL, * seq_dev_mem_reverse_aux = NULL;
 
     fprintf(stdout, "[INFO] Loading query\n");
     load_seq(query, query_seq_host);
     fprintf(stdout, "[INFO] Loading reference\n");
     load_seq(ref, ref_seq_host);
+    fprintf(stdout, "[INFO] Reversing reference\n");
 
     
-     
+    ret = cudaMalloc(&seq_dev_mem_aux, ref_len * sizeof(char)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for reference sequence in device (Attempted %"PRIu64" bytes) at reversing. Error: %d\n", ref_len * sizeof(char), ret); exit(-1); }
+    ret = cudaMalloc(&seq_dev_mem_reverse_aux, ref_len * sizeof(char)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for reverse reference sequence in device (Attempted %"PRIu64" bytes) at reversing. Error: %d\n", ref_len * sizeof(char), ret); exit(-1); }
+
+    ret = cudaMemcpy(seq_dev_mem_aux, ref_seq_host, ref_len, cudaMemcpyHostToDevice);
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not copy reference sequence to device for reversing. Error: %d\n", ret); exit(-1); }
+
+    number_of_blocks = (ref_len)/threads_number + 1;
+
+    kernel_reverse_complement<<<number_of_blocks, threads_number>>>(seq_dev_mem_aux, seq_dev_mem_reverse_aux, ref_len);
+
+    ret = cudaDeviceSynchronize();
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not compute reverse on reference. Error: %d\n", ret); exit(-1); }
+
+    ret = cudaMemcpy(ref_rev_seq_host, seq_dev_mem_reverse_aux, ref_len, cudaMemcpyDeviceToHost);
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not copy reference sequence to device for reversing. Error: %d\n", ret); exit(-1); }
+
+    cudaFree(seq_dev_mem_aux);
+    cudaFree(seq_dev_mem_reverse_aux);
+
+    // Print some info
+
+    fprintf(stdout, "[INFO] Showing start of reference sequence:\n");
+    fprintf(stdout, "\t(Begin ref)%.32s\n", ref_seq_host);
+    fprintf(stdout, "\t(Begin rev)%.32s\n", ref_rev_seq_host);
+    fprintf(stdout, "\t(End   ref)%.32s\n", &ref_seq_host[ref_len-32]);
+    fprintf(stdout, "\t(End   rev)%.32s\n", &ref_rev_seq_host[ref_len-32]);
+
+
+    // Write header to CSV
+    print_header(out, query_len, ref_len);
     
     clock_t begin;
 
-    // Pointer to device memory allocating the query sequence
-    char * seq_dev_mem = NULL, * seq_dev_mem_aux = NULL;
+    ////////////////////////////////////////////////////////////////////////////////
+    // Allocation of pointers
+    ////////////////////////////////////////////////////////////////////////////////
 
 
     // Allocate memory in host to download kmers and store hits
@@ -158,23 +194,7 @@ int main(int argc, char ** argv)
     ////////////////////////////////////////////////////////////////////////////////
 
     
-    fprintf(out, "All by-Identity Ungapped Fragments (Hits based approach)\n");
-    fprintf(out, "[Abr.98/Apr.2010/Dec.2011 -- <ortrelles@uma.es>\n");
-    fprintf(out, "SeqX filename : undef\n");
-    fprintf(out, "SeqY filename : undef\n");
-    fprintf(out, "SeqX name : undef\n");
-    fprintf(out, "SeqY name : undef\n");
-    fprintf(out, "SeqX length : %"PRIu64"\n", query_len);
-    fprintf(out, "SeqY length : %"PRIu64"\n", ref_len);
-    fprintf(out, "Min.fragment.length : undef\n");
-    fprintf(out, "Min.Identity : undef\n");
-    fprintf(out, "Tot Hits (seeds) : undef\n");
-    fprintf(out, "Tot Hits (seeds) used: undef\n");
-    fprintf(out, "Total fragments : undef\n");
-    fprintf(out, "========================================================\n");
-    fprintf(out, "Total CSB: 0\n");
-    fprintf(out, "========================================================\n");
-    fprintf(out, "Type,xStart,yStart,xEnd,yEnd,strand(f/r),block,length,score,ident,similarity,%%ident,SeqX,SeqY\n");
+    
 
     int split = 0;
     uint64_t pos_in_query = 0, pos_in_ref = 0;
@@ -278,6 +298,10 @@ int main(int argc, char ** argv)
 
         while(pos_in_ref < ref_len){
 
+            ////////////////////////////////////////////////////////////////////////////////
+            // FORWARD strand in the reference
+            ////////////////////////////////////////////////////////////////////////////////
+
             items_read = MIN(ref_len - pos_in_ref, words_at_once);
 
             ret = cudaMalloc(&seq_dev_mem, words_at_once * sizeof(char));
@@ -314,7 +338,7 @@ int main(int argc, char ** argv)
 
 
             ////////////////////////////////////////////////////////////////////////////////
-            // Sort reference kmers
+            // Sort reference FORWARD kmers
             ////////////////////////////////////////////////////////////////////////////////
 
             ret = cudaMemset(keys_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
@@ -350,7 +374,7 @@ int main(int argc, char ** argv)
 
 
             ////////////////////////////////////////////////////////////////////////////////
-            // Generate hits for the current split
+            // Generate FORWARD hits for the current split
             ////////////////////////////////////////////////////////////////////////////////
 
             
@@ -442,7 +466,7 @@ int main(int argc, char ** argv)
             ret = cudaFree(device_hits_buf);
 
             ////////////////////////////////////////////////////////////////////////////////
-            // Generate frags
+            // Generate FORWARD frags
             ////////////////////////////////////////////////////////////////////////////////
 
             // Allocate both sequences
@@ -484,33 +508,7 @@ int main(int argc, char ** argv)
             cudaFree(left_offset);
             cudaFree(right_offset);
 
-            /*
-            for(i=0; i<n_hits_kept; i++){
-                //printf("Hit (%"PRIu64", %"PRIu64") yields offsets (%"PRIu64", %"PRIu64") diff: \n", filtered_hits_x[i], filtered_hits_y[i], host_left_offset[i], host_right_offset[i]);
-                
-                uint64_t xStart = filtered_hits_x[i] - host_left_offset[i];
-                uint64_t xEnd = filtered_hits_x[i] + host_right_offset[i];
-                uint64_t yStart = filtered_hits_y[i] - host_left_offset[i];
-                uint64_t yEnd = filtered_hits_y[i] + host_right_offset[i];
-                
-                if((xEnd - xStart) > 99){
-                    fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,%"PRIu64",75,75,0.75,0.75,0,0\n", xStart, yStart, xEnd, yEnd, xEnd - xStart);
-                }
-                
-
-                if(host_left_offset[i] > 1000000 && host_right_offset[i] < 1000000){
-                    printf("Host left: %"PRIu64"\n", host_left_offset[i]);
-                    uint64_t xStart = filtered_hits_x[i] - host_left_offset[i];
-                    uint64_t xEnd = filtered_hits_x[i] + host_right_offset[i];
-                    uint64_t yStart = filtered_hits_y[i] - host_left_offset[i];
-                    uint64_t yEnd = filtered_hits_y[i] + host_right_offset[i];
-                    fprintf(stdout,  "hit pos %"PRIu64", %"PRIu64"\n", filtered_hits_x[i], filtered_hits_y[i]);
-                    fprintf(stdout, "Frag,L:%"PRIu64", HR: %"PRIu64", %"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,%"PRIu64",75,75,0.75,0.75,0,0\n", host_left_offset[i], host_right_offset[i], xStart, yStart, xEnd, yEnd, xEnd - xStart);
-                } 
-                //if() printf("Host r: %"PRIu64"\n", host_right_offset[i]);
-                
-            }
-            */
+            
             filter_and_write_frags(filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, n_hits_kept, out);
 
         }
@@ -544,6 +542,25 @@ int main(int argc, char ** argv)
     return 0;
 }
 
+void print_header(FILE * out, uint64_t query_len, uint64_t ref_len){
 
+    fprintf(out, "All by-Identity Ungapped Fragments (Hits based approach)\n");
+    fprintf(out, "[Abr.98/Apr.2010/Dec.2011 -- <ortrelles@uma.es>\n");
+    fprintf(out, "SeqX filename : undef\n");
+    fprintf(out, "SeqY filename : undef\n");
+    fprintf(out, "SeqX name : undef\n");
+    fprintf(out, "SeqY name : undef\n");
+    fprintf(out, "SeqX length : %"PRIu64"\n", query_len);
+    fprintf(out, "SeqY length : %"PRIu64"\n", ref_len);
+    fprintf(out, "Min.fragment.length : undef\n");
+    fprintf(out, "Min.Identity : undef\n");
+    fprintf(out, "Tot Hits (seeds) : undef\n");
+    fprintf(out, "Tot Hits (seeds) used: undef\n");
+    fprintf(out, "Total fragments : undef\n");
+    fprintf(out, "========================================================\n");
+    fprintf(out, "Total CSB: 0\n");
+    fprintf(out, "========================================================\n");
+    fprintf(out, "Type,xStart,yStart,xEnd,yEnd,strand(f/r),block,length,score,ident,similarity,%%ident,SeqX,SeqY\n");
+}
 
 

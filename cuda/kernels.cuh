@@ -14,3 +14,5 @@ __global__ void kernel_frags_forward_register(uint64_t * h_p1, uint64_t * h_p2, 
 __global__ void kernel_register_fast_hash_rotational(uint64_t * hashes, uint64_t * positions, const char * sequence, uint64_t offset);
 
 __global__ void kernel_index_global32(uint64_t * hashes, uint64_t * positions, const char * sequence, uint64_t offset);
+
+__global__ void kernel_reverse_complement(const char * sequence, char * reverse_sequence, uint64_t seq_len);

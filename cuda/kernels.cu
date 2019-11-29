@@ -31,15 +31,17 @@ __global__ void kernel_frags_forward_register(uint64_t * h_p1, uint64_t * h_p2, 
 	uint64_t score = 0;
 	int p_ident = 100;
 	int cell_score;
-
 	
-	while(p_ident > MIN_P_IDENT && (warp_pos_x_left - 32) >= x_seq_off && (warp_pos_y_left - 32) >= y_seq_off)
+	while(p_ident > MIN_P_IDENT && (warp_pos_x_left - 32) >= (int64_t) x_seq_off && (warp_pos_y_left - 32) >= (int64_t) y_seq_off)
 	{
 		
 		warp_pos_x_left -= 32;
 		warp_pos_y_left -= 32;
 		thre_pos_x = warp_pos_x_left + threadIdx.x;
 		thre_pos_y = warp_pos_y_left + threadIdx.x;
+
+		
+
 		char v_x = seq_x[thre_pos_x - (int64_t) x_seq_off];
 		char v_y = seq_y[thre_pos_y - (int64_t) y_seq_off];
 
@@ -303,4 +305,25 @@ __global__ void kernel_index_global32(uint64_t * hashes, uint64_t * positions, c
 	hashes[threadIdx.x + blockIdx.x * blockDim.x] = hash & bad;
 	//hashes[0] = hash & bad;
 	positions[threadIdx.x + blockIdx.x * blockDim.x] = (threadIdx.x + blockIdx.x * blockDim.x + offset) | (~bad);
+}
+
+__global__ void kernel_reverse_complement(const char * sequence, char * reverse_sequence, uint64_t seq_len) {
+	
+	//uint64_t id = (31 - threadIdx.x) + blockIdx.x * blockDim.x;
+	uint64_t id = threadIdx.x + blockIdx.x * blockDim.x;
+	
+
+	if(id < seq_len){
+
+		//uint64_t lookup = seq_len - id;
+		uint64_t lookup = (seq_len - 1) - id;
+		char original = sequence[id];
+		char complement = 'N';
+		if(original == 'A') complement = 'T';
+		if(original == 'C') complement = 'G';
+		if(original == 'G') complement = 'C';
+		if(original == 'T') complement = 'A';
+
+		reverse_sequence[lookup] = complement;
+	}
 }
