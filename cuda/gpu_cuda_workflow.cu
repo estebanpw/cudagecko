@@ -509,14 +509,210 @@ int main(int argc, char ** argv)
             cudaFree(right_offset);
 
             
-            filter_and_write_frags(filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, n_hits_kept, out);
+            filter_and_write_frags(filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, n_hits_kept, out, 'f', ref_len);
 
         }
 
         // Restart the reference for every block in query
         pos_in_ref = 0;
 
+        ////////////////////////////////////////////////////////////////////////////////
+        // Run the reference blocks BUT REVERSED !
+        ////////////////////////////////////////////////////////////////////////////////
 
+        while(pos_in_ref < ref_len){
+
+            ////////////////////////////////////////////////////////////////////////////////
+            // FORWARD strand in the reference BUT REVERSED !
+            ////////////////////////////////////////////////////////////////////////////////
+
+            items_read = MIN(ref_len - pos_in_ref, words_at_once);
+
+            ret = cudaMalloc(&seq_dev_mem, words_at_once * sizeof(char));
+
+            // Allocate words table
+            ret = cudaMalloc(&keys, words_at_once * sizeof(uint64_t));
+            if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (1). Error: %d\n", ret); exit(-1); }
+            ret = cudaMalloc(&values, words_at_once * sizeof(uint64_t));
+            if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (2). Error: %d\n", ret); exit(-1); }
+            ret = cudaMalloc(&keys_buf, words_at_once * sizeof(uint64_t));
+            if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (3). Error: %d\n", ret); exit(-1); }
+            ret = cudaMalloc(&values_buf, words_at_once * sizeof(uint64_t));
+            if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (4). Error: %d\n", ret); exit(-1); }
+
+            // Load sequence chunk into ram
+            ret = cudaMemcpy(seq_dev_mem, &ref_rev_seq_host[pos_in_ref], items_read, cudaMemcpyHostToDevice);
+            if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device reversed. Error: %d\n", ret); exit(-1); }
+
+            // Run kmers
+            ret = cudaMemset(keys, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
+            ret = cudaMemset(values, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
+            //number_of_blocks = (((items_read - KMER_SIZE + 1)) / (threads_number*4)); 
+            //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
+            number_of_blocks = ((items_read - KMER_SIZE + 1))/threads_number;
+            kernel_index_global32<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
+            ret = cudaDeviceSynchronize();
+            if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on ref reversed. Error: %d\n", ret); exit(-1); }
+
+            ////////////////////////////////////////////////////////////////////////////////
+            // Sort reference FORWARD kmers BUT REVERSED !
+            ////////////////////////////////////////////////////////////////////////////////
+
+            ret = cudaMemset(keys_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
+            ret = cudaMemset(values_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
+            cub::DoubleBuffer<uint64_t> d_keys_ref(keys, keys_buf);
+            cub::DoubleBuffer<uint64_t> d_values_ref(values, values_buf);
+            d_temp_storage = NULL;
+            temp_storage_bytes = 0;
+            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read);
+            ret = cudaDeviceSynchronize();
+            if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+
+            // Allocate temporary storage
+            ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
+            if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for words sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            
+            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read);
+            ret = cudaDeviceSynchronize();
+            if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on ref. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            
+
+
+            // Download kmers
+            ret = cudaMemcpy(dict_y_keys, keys, items_read*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (3). Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(dict_y_values, values, items_read*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (4). Error: %d\n", ret); exit(-1); }
+
+            ret = cudaFree(d_temp_storage);
+            if(ret != cudaSuccess){ fprintf(stderr, "Bad free of temp storage (2): %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+
+            pos_in_ref += words_at_once;
+
+            ////////////////////////////////////////////////////////////////////////////////
+            // Generate FORWARD hits for the current split BUT REVERSED !
+            ////////////////////////////////////////////////////////////////////////////////
+
+            cudaFree(seq_dev_mem);
+            cudaFree(keys);
+            cudaFree(values);
+            cudaFree(keys_buf);
+            cudaFree(values_buf);
+
+
+            uint64_t n_hits_found = generate_hits(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, query_len, ref_len);
+            
+            fprintf(stdout, "[INFO] Generated %"PRIu64" hits on reversed split %d -> (%d%%)\n", n_hits_found, split, (int)((100*MIN(pos_in_ref, ref_len))/ref_len));
+
+            ////////////////////////////////////////////////////////////////////////////////
+            // Sort hits for the current split BUT REVERSED !
+            ////////////////////////////////////////////////////////////////////////////////
+
+            ret = cudaMalloc(&device_diagonals, words_at_once * sizeof(uint64_t));
+            if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for hits in device (1). Error: %d\n", ret); exit(-1); }
+            ret = cudaMalloc(&device_diagonals_buf, words_at_once * sizeof(uint64_t));
+            if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for hits in device (2). Error: %d\n", ret); exit(-1); }
+            ret = cudaMalloc(&device_hits, words_at_once * sizeof(uint64_t));
+            if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for hits in device (3). Error: %d\n", ret); exit(-1); }
+            ret = cudaMalloc(&device_hits_buf, words_at_once * sizeof(uint64_t));
+            if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for hits in device (4). Error: %d\n", ret); exit(-1); }
+
+            // We will actually sort the diagonals with associated values 0,1,2... to n and use these to index the hits array
+            ret = cudaMemcpy(device_hits, ascending_numbers, n_hits_found*sizeof(uint64_t), cudaMemcpyHostToDevice);
+            if(ret != cudaSuccess){ fprintf(stderr, "Uploading device hits. Error: %d\n", ret); exit(-1); }
+
+            ret = cudaMemcpy(device_diagonals, diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyHostToDevice);
+            if(ret != cudaSuccess){ fprintf(stderr, "Uploading device diagonals. Error: %d\n", ret); exit(-1); }
+
+            cub::DoubleBuffer<uint64_t> d_diagonals(device_diagonals, device_diagonals_buf);
+            cub::DoubleBuffer<uint64_t> d_hits(device_hits, device_hits_buf);
+            d_temp_storage = NULL;
+            temp_storage_bytes = 0;
+            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_diagonals, d_hits, n_hits_found);
+            ret = cudaDeviceSynchronize();
+            if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (3). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+
+            // Allocate temporary storage
+            ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
+            if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for hits sorting (1). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            
+            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_diagonals, d_hits, n_hits_found);
+            ret = cudaDeviceSynchronize();
+            if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            
+            // Download hits (actually just number indices)
+            ret = cudaMemcpy(indexing_numbers, device_hits, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            if(ret != cudaSuccess){ fprintf(stderr, "Downloading device hits. Error: %d\n", ret); exit(-1); }
+
+            ret = cudaMemcpy(diagonals, device_diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
+
+
+            uint64_t n_hits_kept = filter_hits(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
+
+            fprintf(stdout, "[INFO] Remaining hits %"PRIu64"\n", n_hits_kept);
+
+            //for(i=0; i<n_hits_kept; i++){
+                //printf("%"PRIu64"\n", diagonals[i]);
+                //fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,32,32,32,1.0,1.0,0,0\n", filtered_hits_x[i], filtered_hits_y[i], filtered_hits_x[i]+32, filtered_hits_y[i]+32);
+            //}
+            
+            ret = cudaFree(d_temp_storage);
+            ret = cudaFree(device_hits);
+            ret = cudaFree(device_diagonals);
+            ret = cudaFree(device_diagonals_buf);
+            ret = cudaFree(device_hits_buf);
+
+            ////////////////////////////////////////////////////////////////////////////////
+            // Generate REVERSE frags
+            ////////////////////////////////////////////////////////////////////////////////
+
+            // Allocate both sequences
+            ret = cudaMalloc(&seq_dev_mem, words_at_once * sizeof(char)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for query sequence in device. Error: %d\n", ret); exit(-1); }
+            ret = cudaMalloc(&seq_dev_mem_aux, words_at_once * sizeof(char)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for ref sequence in device. Error: %d\n", ret); exit(-1); }
+
+            ret = cudaMalloc(&device_filt_hits_x, words_at_once * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device filtered hits query. Error: %d\n", ret); exit(-1); }
+            ret = cudaMalloc(&device_filt_hits_y, words_at_once * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device filtered hits ref. Error: %d\n", ret); exit(-1); }
+            ret = cudaMalloc(&left_offset, words_at_once * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device offset left frags query. Error: %d\n", ret); exit(-1); }
+            ret = cudaMalloc(&right_offset, words_at_once * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device offset right frags query. Error: %d\n", ret); exit(-1); }
+
+            ret = cudaMemcpy(seq_dev_mem, &query_seq_host[pos_in_query-words_at_once], MIN(query_len - (pos_in_query - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy query sequence to device for frags. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(seq_dev_mem_aux, &ref_seq_host[pos_in_ref-words_at_once], MIN(ref_len - (pos_in_ref - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device for frags. Error: %d\n", ret); exit(-1); }
+            
+            ret = cudaMemcpy(device_filt_hits_x, filtered_hits_x, n_hits_kept * sizeof(uint64_t), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy filtered hits x in device. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(device_filt_hits_y, filtered_hits_y, n_hits_kept * sizeof(uint64_t), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy filtered hits y in device. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemset(left_offset, 0x0, n_hits_kept * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy left offset in device. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemset(right_offset, 0x0, n_hits_kept * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy right offset in device. Error: %d\n", ret); exit(-1); }
+
+            //
+            //for(i=n_hits_kept-1; i>1; i--){
+            //    printf(" Frag %"PRIu64" \t x: %.32s %"PRIu64"\n", i, &query_seq_host[filtered_hits_x[i]], filtered_hits_x[i]);
+            //    printf(" \t\t y: %.32s %"PRIu64"\n", &ref_seq_host[filtered_hits_y[i]], filtered_hits_y[i]);
+            //}
+
+            number_of_blocks = n_hits_kept; 
+            //number_of_blocks = 20; // REMOVE !!
+            kernel_frags_forward_register<<<number_of_blocks, threads_number>>>(device_filt_hits_x, device_filt_hits_y, left_offset, right_offset, seq_dev_mem, seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len));
+            ret = cudaDeviceSynchronize();
+            if(ret != cudaSuccess){ fprintf(stderr, "Failed on generating forward frags. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+
+            ret = cudaMemcpy(host_left_offset, left_offset, n_hits_kept * sizeof(uint64_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back left offset. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(host_right_offset, right_offset, n_hits_kept * sizeof(uint64_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back right offset. Error: %d\n", ret); exit(-1); }
+
+            cudaFree(seq_dev_mem);
+            cudaFree(seq_dev_mem_aux);
+            cudaFree(device_filt_hits_x);
+            cudaFree(device_filt_hits_y);
+            cudaFree(left_offset);
+            cudaFree(right_offset);
+
+            
+            filter_and_write_frags(filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, n_hits_kept, out, 'r', ref_len);
+
+
+        }
+
+        pos_in_ref = 0;
 
 
         ++split;

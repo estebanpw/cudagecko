@@ -5,7 +5,7 @@ void terror(const char * s) {
     exit(-1);
 }
 
-void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits_y, uint64_t * host_left_offset, uint64_t * host_right_offset, uint64_t n_frags, FILE * out){
+void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits_y, uint64_t * host_left_offset, uint64_t * host_right_offset, uint64_t n_frags, FILE * out, char strand, uint64_t ref_len){
 
     
     uint64_t current = 0;
@@ -47,8 +47,20 @@ void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits
             uint64_t best_yEnd = filtered_hits_y[max_id] + host_right_offset[max_id];
             uint64_t best_l = best_xEnd - best_xStart;
 
+            //if(frag.strand=='r'){
+			//frag.yStart = ytotal - frag.yStart - 1;
+			//frag.yEnd = ytotal - frag.yEnd - 1;
+
             //printf("So I write: Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,%"PRIu64",75,75,0.75,0.75,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, best_l);
-            fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,%"PRIu64",75,75,0.75,0.75,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, best_l);
+            if(strand == 'f'){
+                fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64",75,75,0.75,0.75,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l);
+            } 
+            else {
+                
+                best_yStart = ref_len - best_yStart - 1;
+                best_yEnd = ref_len - best_yEnd - 1;
+                fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64",75,75,0.75,0.75,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l);
+            }
             max_id = current+1;
 
             xStart = filtered_hits_x[max_id] - host_left_offset[max_id];
@@ -62,7 +74,8 @@ void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits
 
         ++current;
     }
-    fprintf(stdout, "[INFO] Remaining frags %"PRIu64" out of %"PRIu64"\n", written_frags, n_frags);
+    fprintf(stdout, "[INFO] Remaining frags %"PRIu64" out of %"PRIu64" on strand %c\n", written_frags, n_frags, strand);
+    
 
 }
 
