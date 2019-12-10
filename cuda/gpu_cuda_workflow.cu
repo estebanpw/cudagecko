@@ -16,10 +16,10 @@ void print_header(FILE * out, uint64_t query_len, uint64_t ref_len);
 
 int main(int argc, char ** argv)
 {
-    uint64_t i;
-    unsigned selected_device = 0, write = 0;
+    uint64_t i, min_length = 32;
+    unsigned selected_device = 0;
     FILE * query = NULL, * ref = NULL, * out = NULL;
-    init_args(argc, argv, &query, &selected_device, &ref, &out, &write);
+    init_args(argc, argv, &query, &selected_device, &ref, &out, &min_length);
 
     ////////////////////////////////////////////////////////////////////////////////
     // Get info of devices
@@ -69,10 +69,11 @@ int main(int argc, char ** argv)
     uint64_t effective_global_ram =  (global_device_RAM - 100*1024*1024); //Minus 100 MBs
     uint64_t ram_to_be_used = (effective_global_ram) / (2 * (sizeof(Word) + sizeof(char))); //
     uint64_t words_at_once = ram_to_be_used;
+    words_at_once = words_at_once/4; printf("WAAAAAAAAAAAAA\nAAAAAAARNINGGGGGGG\nGGGGGGGGGGGGGGGGGGGGGG\n");
 
 
     uint64_t * keys, * values, * keys_buf, * values_buf;
-    fprintf(stdout, "[INFO] I will use %"PRIu64" bytes for hash (you can have %"PRIu64" entries) and their buffers\n", words_at_once * 2 * sizeof(Word), words_at_once);
+    fprintf(stdout, "[INFO] I will use %"PRIu64" (%"PRIu64" MB) bytes for hash (you can have %"PRIu64" entries) and their buffers\n", words_at_once * 2 * sizeof(Word), (words_at_once * 2 * sizeof(Word))/(1024*1024), words_at_once);
 
     
 
@@ -220,7 +221,7 @@ int main(int argc, char ** argv)
 
         fprintf(stdout, "[EXECUTING] Running split %d -> (%d%%)\n", split, (int)((100*pos_in_query)/query_len));
 
-        uint64_t items_read = MIN(query_len - pos_in_query, words_at_once);
+        uint64_t items_read_x = MIN(query_len - pos_in_query, words_at_once);
 
 
         ////////////////////////////////////////////////////////////////////////////////
@@ -228,16 +229,16 @@ int main(int argc, char ** argv)
         ////////////////////////////////////////////////////////////////////////////////
         
         // Load sequence chunk into ram
-        ret = cudaMemcpy(seq_dev_mem, &query_seq_host[pos_in_query], items_read, cudaMemcpyHostToDevice);
+        ret = cudaMemcpy(seq_dev_mem, &query_seq_host[pos_in_query], items_read_x, cudaMemcpyHostToDevice);
         if(ret != cudaSuccess){ fprintf(stderr, "Could not copy query sequence to device. Error: %d\n", ret); exit(-1); }
 
         // Run kmers
         ret = cudaMemset(keys, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
         ret = cudaMemset(values, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
-        //number_of_blocks = (((items_read - KMER_SIZE + 1)) / (threads_number*4));
+        //number_of_blocks = (((items_read_x - KMER_SIZE + 1)) / (threads_number*4));
         //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_query);
-        number_of_blocks = (items_read - KMER_SIZE + 1)/threads_number;
-        //printf("Going for blocks %"PRIu64" and items %"PRIu64" .wAtOnce: %"PRIu64"\n", number_of_blocks, items_read, words_at_once);
+        number_of_blocks = (items_read_x - KMER_SIZE + 1)/threads_number;
+        //printf("Going for blocks %"PRIu64" and items %"PRIu64" .wAtOnce: %"PRIu64"\n", number_of_blocks, items_read_x, words_at_once);
 
         kernel_index_global32<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_query);
         ret = cudaDeviceSynchronize();
@@ -250,9 +251,10 @@ int main(int argc, char ** argv)
 
         cub::DoubleBuffer<uint64_t> d_keys(keys, keys_buf);
         cub::DoubleBuffer<uint64_t> d_values(values, values_buf);
+
         void * d_temp_storage = NULL;
         size_t temp_storage_bytes = 0;
-        cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys, d_values, items_read);
+        cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys, d_values, items_read_x);
         ret = cudaDeviceSynchronize();
         if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (1). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
@@ -262,22 +264,22 @@ int main(int argc, char ** argv)
 
         // Remove this for  debug
         //read_kmers(query_len, query_seq_host, dict_x_keys, dict_x_values);
-        //ret = cudaMemcpy(keys, dict_x_keys, items_read*sizeof(uint64_t), cudaMemcpyHostToDevice);
-        //ret = cudaMemcpy(values, dict_x_values, items_read*sizeof(uint64_t), cudaMemcpyHostToDevice);
+        //ret = cudaMemcpy(keys, dict_x_keys, items_read_x*sizeof(uint64_t), cudaMemcpyHostToDevice);
+        //ret = cudaMemcpy(values, dict_x_values, items_read_x*sizeof(uint64_t), cudaMemcpyHostToDevice);
         
-        cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys, d_values, items_read);
+        cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys, d_values, items_read_x);
         ret = cudaDeviceSynchronize();
         if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on query. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
         
 
         // Download kmers        
-        ret = cudaMemcpy(dict_x_keys, keys, items_read*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+        ret = cudaMemcpy(dict_x_keys, keys_buf, items_read_x*sizeof(uint64_t), cudaMemcpyDeviceToHost);
         if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (1). Error: %d\n", ret); exit(-1); }
-        ret = cudaMemcpy(dict_x_values, values, items_read*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+        ret = cudaMemcpy(dict_x_values, values_buf, items_read_x*sizeof(uint64_t), cudaMemcpyDeviceToHost);
         if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (2). Error: %d\n", ret); exit(-1); }
 
         // Print hits for debug
-        //for(i=0; i<items_read; i++){
+        //for(i=0; i<items_read_x; i++){
         //    fprintf(out, "%"PRIu64"\n", dict_x_values[i]);
         //}
 
@@ -302,7 +304,7 @@ int main(int argc, char ** argv)
             // FORWARD strand in the reference
             ////////////////////////////////////////////////////////////////////////////////
 
-            items_read = MIN(ref_len - pos_in_ref, words_at_once);
+            uint64_t items_read_y = MIN(ref_len - pos_in_ref, words_at_once);
 
             ret = cudaMalloc(&seq_dev_mem, words_at_once * sizeof(char));
 
@@ -317,15 +319,15 @@ int main(int argc, char ** argv)
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (4). Error: %d\n", ret); exit(-1); }
 
             // Load sequence chunk into ram
-            ret = cudaMemcpy(seq_dev_mem, &ref_seq_host[pos_in_ref], items_read, cudaMemcpyHostToDevice);
+            ret = cudaMemcpy(seq_dev_mem, &ref_seq_host[pos_in_ref], items_read_y, cudaMemcpyHostToDevice);
             if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device. Error: %d\n", ret); exit(-1); }
 
             // Run kmers
             ret = cudaMemset(keys, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
             ret = cudaMemset(values, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
-            //number_of_blocks = (((items_read - KMER_SIZE + 1)) / (threads_number*4)); 
+            //number_of_blocks = (((items_read_y - KMER_SIZE + 1)) / (threads_number*4)); 
             //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
-            number_of_blocks = ((items_read - KMER_SIZE + 1))/threads_number;
+            number_of_blocks = ((items_read_y - KMER_SIZE + 1))/threads_number;
             kernel_index_global32<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on ref. Error: %d\n", ret); exit(-1); }
@@ -333,8 +335,8 @@ int main(int argc, char ** argv)
             // remove all this             
             
             //read_kmers(ref_len, ref_seq_host, dict_y_keys, dict_y_values);
-            //ret = cudaMemcpy(keys, dict_y_keys, items_read*sizeof(uint64_t), cudaMemcpyHostToDevice);
-            //ret = cudaMemcpy(values, dict_y_values, items_read*sizeof(uint64_t), cudaMemcpyHostToDevice);
+            //ret = cudaMemcpy(keys, dict_y_keys, items_read_y*sizeof(uint64_t), cudaMemcpyHostToDevice);
+            //ret = cudaMemcpy(values, dict_y_values, items_read_y*sizeof(uint64_t), cudaMemcpyHostToDevice);
 
 
             ////////////////////////////////////////////////////////////////////////////////
@@ -343,11 +345,14 @@ int main(int argc, char ** argv)
 
             ret = cudaMemset(keys_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
             ret = cudaMemset(values_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
+
             cub::DoubleBuffer<uint64_t> d_keys_ref(keys, keys_buf);
             cub::DoubleBuffer<uint64_t> d_values_ref(values, values_buf);
+
             d_temp_storage = NULL;
             temp_storage_bytes = 0;
-            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read);
+
+            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
@@ -355,16 +360,16 @@ int main(int argc, char ** argv)
             ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
             if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for words sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
-            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read);
+            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on ref. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
 
 
             // Download kmers
-            ret = cudaMemcpy(dict_y_keys, keys, items_read*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            ret = cudaMemcpy(dict_y_keys, keys_buf, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (3). Error: %d\n", ret); exit(-1); }
-            ret = cudaMemcpy(dict_y_values, values, items_read*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            ret = cudaMemcpy(dict_y_values, values_buf, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (4). Error: %d\n", ret); exit(-1); }
 
             ret = cudaFree(d_temp_storage);
@@ -383,7 +388,7 @@ int main(int argc, char ** argv)
             //for(i=0; i<words_at_once; i++) printf("%" PRIu64" %"PRIu64"\n", dict_x_keys[i], dict_x_values[i]);
             //read_kmers(ref_len, ref_seq_host, dict_y_keys, dict_y_values);
             //Qsort(dict_y_keys, dict_y_values, 0, (int64_t) ref_len);
-            //for(i=0; i<words_at_once; i++) printf("%" PRIu64" %"PRIu64"\n", dict_x_keys[i], dict_x_values[i]);
+            //for(i=0; i<words_at_once; i++) printf("%" PRIu64" %"PRIu64"\n", dict_y_keys[i], dict_y_values[i]);
 
             cudaFree(seq_dev_mem);
             cudaFree(keys);
@@ -392,12 +397,12 @@ int main(int argc, char ** argv)
             cudaFree(values_buf);
 
 
-            uint64_t n_hits_found = generate_hits(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, query_len, ref_len);
+            uint64_t n_hits_found = generate_hits(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             
             fprintf(stdout, "[INFO] Generated %"PRIu64" hits on split %d -> (%d%%)\n", n_hits_found, split, (int)((100*MIN(pos_in_ref, ref_len))/ref_len));
 
             // Print hits for debug
-            //for(i=0; i<items_read; i++){
+            //for(i=0; i<items_read_y; i++){
                 //fprintf(out, "%"PRIu64"\n", dict_x_values[i]);
             //}
             //for(i=0; i<n_hits_found; i++){
@@ -443,10 +448,10 @@ int main(int argc, char ** argv)
             if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
             // Download hits (actually just number indices)
-            ret = cudaMemcpy(indexing_numbers, device_hits, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            ret = cudaMemcpy(indexing_numbers, device_hits_buf, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device hits. Error: %d\n", ret); exit(-1); }
 
-            ret = cudaMemcpy(diagonals, device_diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            ret = cudaMemcpy(diagonals, device_diagonals_buf, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
 
 
@@ -509,7 +514,7 @@ int main(int argc, char ** argv)
             cudaFree(right_offset);
 
             
-            filter_and_write_frags(filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, n_hits_kept, out, 'f', ref_len);
+            filter_and_write_frags(filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, n_hits_kept, out, 'f', ref_len, min_length);
 
         }
 
@@ -526,7 +531,7 @@ int main(int argc, char ** argv)
             // FORWARD strand in the reference BUT REVERSED !
             ////////////////////////////////////////////////////////////////////////////////
 
-            items_read = MIN(ref_len - pos_in_ref, words_at_once);
+            uint64_t items_read_y = MIN(ref_len - pos_in_ref, words_at_once);
 
             ret = cudaMalloc(&seq_dev_mem, words_at_once * sizeof(char));
 
@@ -541,15 +546,15 @@ int main(int argc, char ** argv)
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (4). Error: %d\n", ret); exit(-1); }
 
             // Load sequence chunk into ram
-            ret = cudaMemcpy(seq_dev_mem, &ref_rev_seq_host[pos_in_ref], items_read, cudaMemcpyHostToDevice);
+            ret = cudaMemcpy(seq_dev_mem, &ref_rev_seq_host[pos_in_ref], items_read_y, cudaMemcpyHostToDevice);
             if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device reversed. Error: %d\n", ret); exit(-1); }
 
             // Run kmers
             ret = cudaMemset(keys, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
             ret = cudaMemset(values, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
-            //number_of_blocks = (((items_read - KMER_SIZE + 1)) / (threads_number*4)); 
+            //number_of_blocks = (((items_read_y - KMER_SIZE + 1)) / (threads_number*4)); 
             //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
-            number_of_blocks = ((items_read - KMER_SIZE + 1))/threads_number;
+            number_of_blocks = ((items_read_y - KMER_SIZE + 1))/threads_number;
             kernel_index_global32<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on ref reversed. Error: %d\n", ret); exit(-1); }
@@ -564,7 +569,7 @@ int main(int argc, char ** argv)
             cub::DoubleBuffer<uint64_t> d_values_ref(values, values_buf);
             d_temp_storage = NULL;
             temp_storage_bytes = 0;
-            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read);
+            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
@@ -572,16 +577,16 @@ int main(int argc, char ** argv)
             ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
             if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for words sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
-            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read);
+            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on ref. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
 
 
             // Download kmers
-            ret = cudaMemcpy(dict_y_keys, keys, items_read*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            ret = cudaMemcpy(dict_y_keys, keys_buf, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (3). Error: %d\n", ret); exit(-1); }
-            ret = cudaMemcpy(dict_y_values, values, items_read*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            ret = cudaMemcpy(dict_y_values, values_buf, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (4). Error: %d\n", ret); exit(-1); }
 
             ret = cudaFree(d_temp_storage);
@@ -600,7 +605,7 @@ int main(int argc, char ** argv)
             cudaFree(values_buf);
 
 
-            uint64_t n_hits_found = generate_hits(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, query_len, ref_len);
+            uint64_t n_hits_found = generate_hits(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             
             fprintf(stdout, "[INFO] Generated %"PRIu64" hits on reversed split %d -> (%d%%)\n", n_hits_found, split, (int)((100*MIN(pos_in_ref, ref_len))/ref_len));
 
@@ -641,10 +646,10 @@ int main(int argc, char ** argv)
             if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
             // Download hits (actually just number indices)
-            ret = cudaMemcpy(indexing_numbers, device_hits, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            ret = cudaMemcpy(indexing_numbers, device_hits_buf, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device hits. Error: %d\n", ret); exit(-1); }
 
-            ret = cudaMemcpy(diagonals, device_diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            ret = cudaMemcpy(diagonals, device_diagonals_buf, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
 
 
@@ -692,12 +697,18 @@ int main(int argc, char ** argv)
 
             number_of_blocks = n_hits_kept; 
             //number_of_blocks = 20; // REMOVE !!
-            kernel_frags_forward_register<<<number_of_blocks, threads_number>>>(device_filt_hits_x, device_filt_hits_y, left_offset, right_offset, seq_dev_mem, seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len));
+            kernel_frags_reverse_register<<<number_of_blocks, threads_number>>>(device_filt_hits_x, device_filt_hits_y, left_offset, right_offset, seq_dev_mem, seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len));
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Failed on generating forward frags. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
             ret = cudaMemcpy(host_left_offset, left_offset, n_hits_kept * sizeof(uint64_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back left offset. Error: %d\n", ret); exit(-1); }
             ret = cudaMemcpy(host_right_offset, right_offset, n_hits_kept * sizeof(uint64_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back right offset. Error: %d\n", ret); exit(-1); }
+
+            /*
+            for(i=0; i<n_hits_kept; i++){
+                printf("lo: %"PRIu64" ro: %"PRIu64"\n", host_left_offset, host_right_offset);
+            }
+            */
 
             cudaFree(seq_dev_mem);
             cudaFree(seq_dev_mem_aux);
@@ -707,7 +718,7 @@ int main(int argc, char ** argv)
             cudaFree(right_offset);
 
             
-            filter_and_write_frags(filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, n_hits_kept, out, 'r', ref_len);
+            filter_and_write_frags(filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, n_hits_kept, out, 'r', ref_len, min_length);
 
 
         }

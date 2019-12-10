@@ -110,6 +110,85 @@ __global__ void kernel_frags_forward_register(uint64_t * h_p1, uint64_t * h_p2, 
 }
 
 
+__global__ void kernel_frags_reverse_register(uint64_t * h_p1, uint64_t * h_p2, uint64_t * left_offset, uint64_t * right_offset, const char * seq_x, const char * seq_y, uint64_t query_len, uint64_t ref_len, uint64_t x_seq_off, uint64_t y_seq_off, uint64_t x_lim, uint64_t y_lim){
+
+	// LEFT ALIGNMENT
+	int64_t warp_pos_x_left = (int64_t) h_p1[blockIdx.x];
+	int64_t warp_pos_y_left = (int64_t) h_p2[blockIdx.x];
+	int64_t thre_pos_x, thre_pos_y;
+	uint64_t score = 0;
+	int p_ident = 100;
+	int cell_score;
+	
+	while(p_ident > MIN_P_IDENT && (warp_pos_x_left - 32) >= (int64_t) x_seq_off && (warp_pos_y_left + 32) < (int64_t) y_lim)
+	{
+		
+		warp_pos_x_left -= 32;
+		warp_pos_y_left += 32;
+		thre_pos_x = warp_pos_x_left + threadIdx.x;
+		thre_pos_y = warp_pos_y_left + threadIdx.x;
+
+		
+		char v_x = seq_x[thre_pos_x - (int64_t) x_seq_off];
+		char v_y = seq_y[thre_pos_y - (int64_t) y_seq_off];
+
+		//cell_score = (v_x == v_y && v_x != '\0' && v_y != '\0');
+		cell_score = (v_x == v_y);
+
+		for (int offset = 16; offset > 0; offset = offset >> 1)
+			cell_score += __shfl_down_sync(0xFFFFFFFF, cell_score, offset);
+
+		
+		int idents = __shfl_sync(0xFFFFFFFF, cell_score, 0);
+		score = score + idents;
+		p_ident = ((100 * score) / (int) ((int64_t) h_p1[blockIdx.x] - warp_pos_x_left));
+		
+	}
+	
+	
+	
+	
+
+	// RIGHT ALIGNMENT
+	int64_t warp_pos_x_right = (int64_t) h_p1[blockIdx.x] + 32;
+	int64_t warp_pos_y_right = (int64_t) h_p2[blockIdx.x] + 32;
+	score = 0;
+	p_ident = 100;
+
+	/*
+	while(p_ident > MIN_P_IDENT && (warp_pos_x_right + 32) < (int64_t) x_lim && (warp_pos_y_right + 32) < (int64_t) y_lim)
+	{
+		thre_pos_x = warp_pos_x_right + threadIdx.x;
+		thre_pos_y = warp_pos_y_right + threadIdx.x;
+		char v_x = seq_x[thre_pos_x - (int64_t) x_seq_off];
+		char v_y = seq_y[thre_pos_y - (int64_t) y_seq_off];
+
+		//cell_score = (v_x == v_y && v_x != '\0' && v_y != '\0');
+		cell_score = (v_x == v_y);
+
+		for (int offset = 16; offset > 0; offset = offset >> 1)
+			cell_score += __shfl_down_sync(0xFFFFFFFF, cell_score, offset);
+		
+		int idents = __shfl_sync(0xFFFFFFFF, cell_score, 0);
+		score = score + (uint64_t) idents;
+		p_ident = (int) ((100 * score) / (uint64_t) (warp_pos_x_right - ((int64_t) h_p1[blockIdx.x])));
+
+		warp_pos_x_right += 32;
+		warp_pos_y_right += 32; 
+
+	}
+	*/
+	
+
+	// Save at the end
+	if(threadIdx.x == 0){
+		left_offset[blockIdx.x] = h_p1[blockIdx.x] - (uint64_t) warp_pos_x_left;
+		right_offset[blockIdx.x] = (uint64_t) (warp_pos_x_right + 32) - h_p1[blockIdx.x];
+	}
+
+}
+
+
 __global__ void kernel_register_fast_hash_rotational(uint64_t * hashes, uint64_t * positions, const char * sequence, uint64_t offset) {
 	
 

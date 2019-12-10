@@ -5,16 +5,31 @@ void terror(const char * s) {
     exit(-1);
 }
 
-void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits_y, uint64_t * host_left_offset, uint64_t * host_right_offset, uint64_t n_frags, FILE * out, char strand, uint64_t ref_len){
+void build_frag(uint64_t * xStart, uint64_t * xEnd, uint64_t * yStart, uint64_t * yEnd, uint64_t * curr_l, char strand,
+    uint64_t * filtered_hits_x, uint64_t * filtered_hits_y, uint64_t * host_left_offset, uint64_t * host_right_offset, uint64_t id){
+    if(strand == 'f'){
+        *xStart = filtered_hits_x[id] - host_left_offset[id];
+        *xEnd = filtered_hits_x[id] + host_right_offset[id];
+        *yStart = filtered_hits_y[id] - host_left_offset[id];
+        *yEnd = filtered_hits_y[id] + host_right_offset[id];
+        *curr_l = *xEnd - *xStart;
+    }else{
+        *xStart = filtered_hits_x[id] - host_left_offset[id];
+        *xEnd = filtered_hits_x[id] + host_right_offset[id];
+        *yStart = filtered_hits_y[id] - host_right_offset[id];
+        *yEnd = filtered_hits_y[id] + host_left_offset[id];
+        *curr_l = *xEnd - *xStart;
+    }
+}
+
+void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits_y, uint64_t * host_left_offset, uint64_t * host_right_offset, uint64_t n_frags, FILE * out, char strand, uint64_t ref_len, uint64_t min_length){
 
     
     uint64_t current = 0;
 
-    uint64_t xStart = filtered_hits_x[current] - host_left_offset[current];
-    uint64_t xEnd = filtered_hits_x[current] + host_right_offset[current];
-    uint64_t yStart = filtered_hits_y[current] - host_left_offset[current];
-    uint64_t yEnd = filtered_hits_y[current] + host_right_offset[current];
-    uint64_t curr_l = xEnd - xStart;
+    uint64_t xStart, xEnd, yStart, yEnd, curr_l;
+
+    build_frag(&xStart, &xEnd, &yStart, &yEnd, &curr_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, current);
 
     uint64_t next_xStart, next_yStart, next_xEnd, next_yEnd, next_l;
 
@@ -23,11 +38,7 @@ void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits
 
     while(current + 1 < n_frags){
 
-        next_xStart = filtered_hits_x[current+1] - host_left_offset[current+1];
-        next_xEnd = filtered_hits_x[current+1] + host_right_offset[current+1];
-        next_yStart = filtered_hits_y[current+1] - host_left_offset[current+1];
-        next_yEnd = filtered_hits_y[current+1] + host_right_offset[current+1];
-        next_l = next_xEnd - next_xStart;
+        build_frag(&next_xStart, &next_xEnd, &next_yStart, &next_yEnd, &next_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, current+1);
 
         // If they are overlapping (on both x and y)
         if(xStart <= next_xEnd && next_xStart <= xEnd && yStart <= next_yEnd && next_yStart <= yEnd){
@@ -41,33 +52,29 @@ void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits
         }else{
             //printf("%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64" l:%"PRIu64" does not overlap with \n", xStart, yStart, xEnd, yEnd, xEnd-xStart);
             //printf("%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64" l:%"PRIu64"\n", next_xStart, next_yStart, next_xEnd, next_yEnd, next_xEnd-next_xStart);
-            uint64_t best_xStart = filtered_hits_x[max_id] - host_left_offset[max_id];
-            uint64_t best_xEnd = filtered_hits_x[max_id] + host_right_offset[max_id];
-            uint64_t best_yStart = filtered_hits_y[max_id] - host_left_offset[max_id];
-            uint64_t best_yEnd = filtered_hits_y[max_id] + host_right_offset[max_id];
-            uint64_t best_l = best_xEnd - best_xStart;
+            uint64_t best_xStart, best_xEnd, best_yStart, best_yEnd, best_l;
+
+            build_frag(&best_xStart, &best_xEnd, &best_yStart, &best_yEnd, &best_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, max_id);
 
             //if(frag.strand=='r'){
 			//frag.yStart = ytotal - frag.yStart - 1;
 			//frag.yEnd = ytotal - frag.yEnd - 1;
 
             //printf("So I write: Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,%"PRIu64",75,75,0.75,0.75,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, best_l);
-            if(strand == 'f'){
-                fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64",75,75,0.75,0.75,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l);
-            } 
-            else {
-                
-                best_yStart = ref_len - best_yStart - 1;
-                best_yEnd = ref_len - best_yEnd - 1;
-                fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64",75,75,0.75,0.75,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l);
+            if((best_xEnd - best_xStart) >= min_length){
+                if(strand == 'f'){
+                    fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64",75,75,0.75,0.75,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l);
+                } 
+                else {
+                    
+                    best_yStart = ref_len - best_yStart - 1;
+                    best_yEnd = ref_len - best_yEnd - 1;
+                    fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64",75,75,0.75,0.75,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l);
+                }
             }
             max_id = current+1;
 
-            xStart = filtered_hits_x[max_id] - host_left_offset[max_id];
-            xEnd = filtered_hits_x[max_id] + host_right_offset[max_id];
-            yStart = filtered_hits_y[max_id] - host_left_offset[max_id];
-            yEnd = filtered_hits_y[max_id] + host_right_offset[max_id];
-            curr_l = xEnd - xStart;
+            build_frag(&xStart, &xEnd, &yStart, &yEnd, &curr_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, max_id);
 
             ++written_frags;
         }
@@ -80,7 +87,7 @@ void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits
 }
 
 uint64_t generate_hits(uint64_t words_at_once, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
-    uint64_t * keys_y, uint64_t * values_x, uint64_t * values_y, uint64_t query_len, uint64_t ref_len){
+    uint64_t * keys_y, uint64_t * values_x, uint64_t * values_y, uint64_t items_x, uint64_t items_y, uint64_t query_len, uint64_t ref_len){
 
     // Nota: para generar TODOS los hits hay que tener en cuenta que si hay hits repetidos en
     // ambos diccionarios se debe volver atrás cuando se encuentra uno distinto
@@ -89,15 +96,27 @@ uint64_t generate_hits(uint64_t words_at_once, uint64_t * diagonals, Hit * hits,
     uint64_t id_x = 0, id_y = 0, n_hits_found = 0;
     uint64_t diff_offset = ref_len;
     uint64_t diag_len = MAX(query_len, ref_len);
+    int64_t last_position_y = -1;
+
+    /*
+    FILE * wat = fopen("wat", "wt");
+    uint64_t i = 0; for(i=0; i<words_at_once; i++){
+        fprintf(wat, "%"PRIu64" at %"PRIu64"\n", keys_x[i], values_x[i]);
+    }
+    fclose(wat);
+    */
     
-    while(id_x < words_at_once || id_y < words_at_once) {
+    while(id_x < items_x || id_y < items_y) {
 
         // Compare
-        if(id_x == words_at_once || id_y == words_at_once){ break; }
+        if(id_x == items_x || id_y == items_y){ break; }
         
         
         if(keys_x[id_x] == keys_y[id_y] && values_x[id_x] != 0xFFFFFFFFFFFFFFFF && values_y[id_y] != 0xFFFFFFFFFFFFFFFF) {
             
+            //if(last_position_y == -1) last_position_y = (int64_t) id_y;
+            //if(last_position_x == -1) last_position_x = (int64_t) id_x;
+
             // This is a hit
             //printf("Made hit: ");
             hits[n_hits_found].p1 = values_x[id_x];
@@ -115,8 +134,16 @@ uint64_t generate_hits(uint64_t words_at_once, uint64_t * diagonals, Hit * hits,
 
             //printf("next comp is %"PRIu64" with %"PRIu64"\n", keys_x[id_x], keys_y[id_y]);
         }
-        else if(keys_x[id_x] < keys_y[id_y]) ++id_x;
-        else ++id_y;
+        else if(keys_x[id_x] < keys_y[id_y]){
+            // Hits are lost if the same hashes are on both dictionaries repeated
+            // Because once you skip, you skip forever
+            //id_y = (uint64_t) last_position_y;
+            ++id_x;
+        } 
+        else {
+            ++id_y; 
+            
+        }
     }
 
     //printf("Generated %"PRIu64" hits \n", n_hits_found);
@@ -193,7 +220,7 @@ void read_kmers(uint64_t query_l, char * seq_x, uint64_t * keys_x, uint64_t * va
     }
 }
 
-void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, FILE ** ref, FILE ** out, unsigned * write){
+void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, FILE ** ref, FILE ** out, uint64_t * min_length){
     
     int pNum = 0;
     char * p1 = NULL, * p2 = NULL;
@@ -203,13 +230,10 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
             fprintf(stdout, "USAGE:\n");
             fprintf(stdout, "           GECKOCUDA -query [file] -ref [file] -dev [device]\n");
             fprintf(stdout, "OPTIONAL:\n");
-            fprintf(stdout, "           --write     Enables writing output\n");
+            fprintf(stdout, "           -len        Minimum length of a frag (default 32)\n");
             fprintf(stdout, "           --help      Shows help for program usage\n");
             fprintf(stdout, "\n");
             exit(1);
-        }
-        if(strcmp(av[pNum], "--write") == 0){
-            *write = 1;
         }
 
         if(strcmp(av[pNum], "-query") == 0){
@@ -227,6 +251,11 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
         if(strcmp(av[pNum], "-dev") == 0){
             *selected_device = (unsigned) atoi(av[pNum+1]);
             if(atoi(av[pNum+1]) < 0) { fprintf(stderr, "Device must be >0\n"); exit(-1); }
+        }
+
+        if(strcmp(av[pNum], "-len") == 0){
+            *min_length = (uint64_t) atoi(av[pNum+1]);
+            if(atoi(av[pNum+1]) < 1) { fprintf(stderr, "Length must be >0\n"); exit(-1); }
         }
 
         pNum++;
