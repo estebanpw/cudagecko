@@ -12,14 +12,13 @@ void build_frag(uint64_t * xStart, uint64_t * xEnd, uint64_t * yStart, uint64_t 
         *xEnd = filtered_hits_x[id] + host_right_offset[id];
         *yStart = filtered_hits_y[id] - host_left_offset[id];
         *yEnd = filtered_hits_y[id] + host_right_offset[id];
-        *curr_l = *xEnd - *xStart;
     }else{
         *xStart = filtered_hits_x[id] - host_left_offset[id];
         *xEnd = filtered_hits_x[id] + host_right_offset[id];
-        *yStart = filtered_hits_y[id] - host_right_offset[id];
-        *yEnd = filtered_hits_y[id] + host_left_offset[id];
-        *curr_l = *xEnd - *xStart;
+        *yStart = filtered_hits_y[id] - host_left_offset[id];
+        *yEnd = filtered_hits_y[id] + host_right_offset[id];
     }
+    *curr_l = *xEnd - *xStart;
 }
 
 void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits_y, uint64_t * host_left_offset, uint64_t * host_right_offset, uint64_t n_frags, FILE * out, char strand, uint64_t ref_len, uint64_t min_length){
@@ -31,6 +30,8 @@ void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits
 
     build_frag(&xStart, &xEnd, &yStart, &yEnd, &curr_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, current);
 
+    //fprintf(stdout, "I am [%"PRIu64"]: Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64", his hit [%"PRIu64", %"PRIu64"]\n", current, xStart, yStart, xEnd, yEnd, strand, curr_l, filtered_hits_x[current], filtered_hits_y[current]);
+
     uint64_t next_xStart, next_yStart, next_xEnd, next_yEnd, next_l;
 
     uint64_t max_id = 0;
@@ -39,44 +40,95 @@ void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits
     while(current + 1 < n_frags){
 
         build_frag(&next_xStart, &next_xEnd, &next_yStart, &next_yEnd, &next_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, current+1);
+        //fprintf(stdout, "Looking for [%"PRIu64"]: Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64", his hit [%"PRIu64", %"PRIu64"]\n", current+1, next_xStart, next_yStart, next_xEnd, next_yEnd, strand, next_l, filtered_hits_x[current+1], filtered_hits_y[current+1]);
+
+        /*
+        if(strand == 'r'){
+            next_yStart = ref_len - next_yStart - 1;
+            next_yEnd = ref_len - next_yEnd - 1;
+            fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64",75,75,0.75,0.75,0,0\n", next_xStart, next_yStart, next_xEnd, next_yEnd, strand, next_l);
+        }
+        */
 
         // If they are overlapping (on both x and y)
-        if(xStart <= next_xEnd && next_xStart <= xEnd && yStart <= next_yEnd && next_yStart <= yEnd){
+        if(strand == 'f'){
+            int64_t dprev = (int64_t) xStart - (int64_t) yStart;
+            int64_t dpost = (int64_t) next_xStart - (int64_t) next_yStart;
 
-            // If the new one is bigger
-            if(next_l > curr_l){
-                curr_l = next_l;
-                max_id = current+1;
-            }
+            //fprintf(stdout, "Their diags [%"PRId64":%"PRId64"]\n", dprev, dpost);
 
-        }else{
-            //printf("%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64" l:%"PRIu64" does not overlap with \n", xStart, yStart, xEnd, yEnd, xEnd-xStart);
-            //printf("%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64" l:%"PRIu64"\n", next_xStart, next_yStart, next_xEnd, next_yEnd, next_xEnd-next_xStart);
-            uint64_t best_xStart, best_xEnd, best_yStart, best_yEnd, best_l;
+            if(dprev == dpost && xStart <= next_xEnd && next_xStart <= xEnd && yStart <= next_yEnd && next_yStart <= yEnd){
 
-            build_frag(&best_xStart, &best_xEnd, &best_yStart, &best_yEnd, &best_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, max_id);
+                // If the new one is bigger
+                if(next_l >= curr_l){
 
-            //if(frag.strand=='r'){
-			//frag.yStart = ytotal - frag.yStart - 1;
-			//frag.yEnd = ytotal - frag.yEnd - 1;
+                    //fprintf(stdout, "Yea, next one is bigger\n");
+                    curr_l = next_l;
+                    max_id = current+1;
+                }
 
-            //printf("So I write: Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,%"PRIu64",75,75,0.75,0.75,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, best_l);
-            if((best_xEnd - best_xStart) >= min_length){
-                if(strand == 'f'){
-                    fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64",75,75,0.75,0.75,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l);
-                } 
-                else {
+            }else{
+
+                //fprintf(stdout, "Not overlapping or different diag now so lets go save [%"PRIu64"]\n", max_id);
+
+                uint64_t best_xStart, best_xEnd, best_yStart, best_yEnd, best_l;
+
+                build_frag(&best_xStart, &best_xEnd, &best_yStart, &best_yEnd, &best_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, max_id);
+
+                if((best_xEnd - best_xStart) >= min_length){
                     
+                    fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64",75,75,0.75,0.75,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l);
+                }
+                max_id = current+1;
+
+
+                
+                build_frag(&xStart, &xEnd, &yStart, &yEnd, &curr_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, max_id);
+                //fprintf(stdout, "I am [%"PRIu64"]: Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64", his hit [%"PRIu64", %"PRIu64"]\n", max_id, xStart, yStart, xEnd, yEnd, strand, curr_l, filtered_hits_x[max_id], filtered_hits_y[max_id]);
+
+                ++written_frags;
+            }
+        }
+
+        if(strand == 'r'){
+
+            int64_t dprev = (int64_t) xStart - (int64_t) yStart;
+            int64_t dpost = (int64_t) next_xStart - (int64_t) next_yStart;
+
+            //fprintf(stdout, "Their diags [%"PRId64":%"PRId64"]\n", dprev, dpost);
+
+            if(dprev == dpost && xStart <= next_xEnd && next_xStart <= xEnd && yStart <= next_yEnd && next_yStart <= yEnd){
+
+                // If the new one is bigger
+                if(next_l >= curr_l){
+                    //fprintf(stdout, "Yea, next one is bigger\n");
+                    curr_l = next_l;
+                    max_id = current+1;
+                }
+
+            }else{
+
+
+                //fprintf(stdout, "Not overlapping or different diag now so lets go save [%"PRIu64"]\n", max_id);
+
+                uint64_t best_xStart, best_xEnd, best_yStart, best_yEnd, best_l;
+
+                build_frag(&best_xStart, &best_xEnd, &best_yStart, &best_yEnd, &best_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, max_id);
+
+                if((best_xEnd - best_xStart) >= min_length){
+                    int64_t d = best_xStart + best_yStart;
                     best_yStart = ref_len - best_yStart - 1;
                     best_yEnd = ref_len - best_yEnd - 1;
                     fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64",75,75,0.75,0.75,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l);
+                    
                 }
+                max_id = current+1;
+
+                build_frag(&xStart, &xEnd, &yStart, &yEnd, &curr_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, max_id);
+                //fprintf(stdout, "I am [%"PRIu64"]: Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64", his hit [%"PRIu64", %"PRIu64"]\n", max_id, xStart, yStart, xEnd, yEnd, strand, curr_l, filtered_hits_x[max_id], filtered_hits_y[max_id]);
+
+                ++written_frags;
             }
-            max_id = current+1;
-
-            build_frag(&xStart, &xEnd, &yStart, &yEnd, &curr_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, max_id);
-
-            ++written_frags;
         }
 
         ++current;
@@ -98,13 +150,6 @@ uint64_t generate_hits(uint64_t words_at_once, uint64_t * diagonals, Hit * hits,
     uint64_t diag_len = MAX(query_len, ref_len);
     int64_t last_position_y = -1;
 
-    /*
-    FILE * wat = fopen("wat", "wt");
-    uint64_t i = 0; for(i=0; i<words_at_once; i++){
-        fprintf(wat, "%"PRIu64" at %"PRIu64"\n", keys_x[i], values_x[i]);
-    }
-    fclose(wat);
-    */
     
     while(id_x < items_x || id_y < items_y) {
 
@@ -122,6 +167,8 @@ uint64_t generate_hits(uint64_t words_at_once, uint64_t * diagonals, Hit * hits,
             hits[n_hits_found].p1 = values_x[id_x];
             hits[n_hits_found].p2 = values_y[id_y];
             // Compute diagonal value with associated x value -> (x - y) * Ld + x 
+            // Le estoy sumando el diff_offset (i.e. lo mas largo que puede ser la y) para que siempre sean positivos (como x es positivo)
+            // pues solo la y resta
             // This is good enough for sequences length up to 2,147,483,648 bp 
             diagonals[n_hits_found] =  ((diff_offset + values_x[id_x]) - values_y[id_y]) * diag_len + (diff_offset + values_x[id_x]);
 
@@ -151,14 +198,38 @@ uint64_t generate_hits(uint64_t words_at_once, uint64_t * diagonals, Hit * hits,
 
 }
 
-
-uint64_t filter_hits(uint64_t * diagonals, uint64_t * indexing_numbers, Hit * hits, uint64_t * filtered_hits_x, uint64_t * filtered_hits_y, uint64_t n_hits_found){
+uint64_t filter_hits_forward(uint64_t * diagonals, uint64_t * indexing_numbers, Hit * hits, uint64_t * filtered_hits_x, uint64_t * filtered_hits_y, uint64_t n_hits_found){
     
     if(n_hits_found == 0) return 0;
     int64_t diagonal = (int64_t) hits[indexing_numbers[0]].p1 - (int64_t) hits[indexing_numbers[0]].p2;
     uint64_t last_position = hits[indexing_numbers[0]].p1, t = 1, t_kept = 0;
 
     while (t < (n_hits_found-1)) {
+
+        if(diagonal == ((int64_t) hits[indexing_numbers[t]].p1 - (int64_t) hits[indexing_numbers[t]].p2) && hits[indexing_numbers[t]].p1 < (last_position+63)){
+            
+        }else{
+
+            last_position = hits[indexing_numbers[t]].p1;
+            diagonal = (int64_t) hits[indexing_numbers[t]].p1 - (int64_t) hits[indexing_numbers[t]].p2;
+            filtered_hits_x[t_kept] = hits[indexing_numbers[t]].p1;
+            filtered_hits_y[t_kept] = hits[indexing_numbers[t]].p2;
+            ++t_kept;
+        }
+        ++t;
+    }
+    return t_kept;
+}
+
+uint64_t filter_hits_reverse(uint64_t * diagonals, uint64_t * indexing_numbers, Hit * hits, uint64_t * filtered_hits_x, uint64_t * filtered_hits_y, uint64_t n_hits_found){
+    
+    if(n_hits_found == 0) return 0;
+    int64_t diagonal = (int64_t) hits[indexing_numbers[0]].p1 - (int64_t) hits[indexing_numbers[0]].p2;
+    uint64_t last_position = hits[indexing_numbers[0]].p1, t = 1, t_kept = 0;
+
+    while (t < (n_hits_found-1)) {
+
+        //fprintf(stdout, "dprev: % "PRId64", dnew: %" PRId64"\n", diagonal, (int64_t) hits[indexing_numbers[t]].p1 + (int64_t) hits[indexing_numbers[t]].p2);
 
         if(diagonal == ((int64_t) hits[indexing_numbers[t]].p1 - (int64_t) hits[indexing_numbers[t]].p2) && hits[indexing_numbers[t]].p1 < (last_position+63)){
             

@@ -69,11 +69,12 @@ int main(int argc, char ** argv)
     uint64_t effective_global_ram =  (global_device_RAM - 100*1024*1024); //Minus 100 MBs
     uint64_t ram_to_be_used = (effective_global_ram) / (2 * (sizeof(Word) + sizeof(char))); //
     uint64_t words_at_once = ram_to_be_used;
-    words_at_once = words_at_once/4; printf("WAAAAAAAAAAAAA\nAAAAAAARNINGGGGGGG\nGGGGGGGGGGGGGGGGGGGGGG\n");
+    //words_at_once = words_at_once/4; printf("WAAAAAAAAAAAAA\nAAAAAAARNINGGGGGGG\nGGGGGGGGGGGGGGGGGGGGGG\n");
 
 
     uint64_t * keys, * values, * keys_buf, * values_buf;
     fprintf(stdout, "[INFO] I will use %"PRIu64" (%"PRIu64" MB) bytes for hash (you can have %"PRIu64" entries) and their buffers\n", words_at_once * 2 * sizeof(Word), (words_at_once * 2 * sizeof(Word))/(1024*1024), words_at_once);
+    fprintf(stdout, "[INFO] Filtering at a minimum length of %"PRIu64" bps\n", min_length);
 
     
 
@@ -143,6 +144,10 @@ int main(int argc, char ** argv)
 
     ret = cudaMemcpy(ref_rev_seq_host, seq_dev_mem_reverse_aux, ref_len, cudaMemcpyDeviceToHost);
     if(ret != cudaSuccess){ fprintf(stderr, "Could not copy reference sequence to device for reversing. Error: %d\n", ret); exit(-1); }
+
+    //printf("WO WO OWOW REMOVE THIS URGENT!!!!!!!! ALL IS BAD \n");
+    //memcpy(ref_rev_seq_host, ref_seq_host, ref_len);
+    //printf("WO WO OWOW REMOVE THIS URGENT!!!!!!!! ALL IS BAD \n");
 
     cudaFree(seq_dev_mem_aux);
     cudaFree(seq_dev_mem_reverse_aux);
@@ -455,7 +460,7 @@ int main(int argc, char ** argv)
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
 
 
-            uint64_t n_hits_kept = filter_hits(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
+            uint64_t n_hits_kept = filter_hits_forward(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
 
             fprintf(stdout, "[INFO] Remaining hits %"PRIu64"\n", n_hits_kept);
 
@@ -505,6 +510,22 @@ int main(int argc, char ** argv)
 
             ret = cudaMemcpy(host_left_offset, left_offset, n_hits_kept * sizeof(uint64_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back left offset. Error: %d\n", ret); exit(-1); }
             ret = cudaMemcpy(host_right_offset, right_offset, n_hits_kept * sizeof(uint64_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back right offset. Error: %d\n", ret); exit(-1); }
+
+            /*
+            FILE * anything3 = fopen("onlyfrags-forward.csv", "wt");
+            print_header(anything3, query_len, ref_len);
+            for(i=0; i<n_hits_kept; i++){
+                uint64_t best_xStart = filtered_hits_x[i] - host_left_offset[i];
+                uint64_t best_xEnd = filtered_hits_x[i] + host_right_offset[i];
+                uint64_t best_yStart = filtered_hits_y[i] - host_left_offset[i];
+                uint64_t best_yEnd = filtered_hits_y[i] + host_right_offset[i];
+
+                int64_t d = (filtered_hits_x[i] - filtered_hits_y[i]);
+                fprintf(anything3, "hitx: %"PRIu64" hity: %"PRIu64" (d: %"PRId64") -> Frag,(%"PRId64"),%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64"\n", filtered_hits_x[i], filtered_hits_y[i], d, (int64_t)best_xStart-(int64_t)best_yStart, best_xStart, best_yStart, best_xEnd, best_yEnd, best_xEnd-best_xStart);
+                //fprintf(anything, "Frag,%"PRId64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,%"PRIu64",32,32,1.0,1.0,0,0\n", d, filtered_hits_x[i], filtered_hits_y[i], best_xStart, best_yStart, best_xEnd, best_yEnd, best_xEnd-best_xStart);
+            }
+            fclose(anything3);
+            */
 
             cudaFree(seq_dev_mem);
             cudaFree(seq_dev_mem_aux);
@@ -595,7 +616,7 @@ int main(int argc, char ** argv)
             pos_in_ref += words_at_once;
 
             ////////////////////////////////////////////////////////////////////////////////
-            // Generate FORWARD hits for the current split BUT REVERSED !
+            // Generate hits for the current split BUT REVERSED !
             ////////////////////////////////////////////////////////////////////////////////
 
             cudaFree(seq_dev_mem);
@@ -653,14 +674,30 @@ int main(int argc, char ** argv)
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
 
 
-            uint64_t n_hits_kept = filter_hits(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
+            uint64_t n_hits_kept = filter_hits_reverse(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
 
             fprintf(stdout, "[INFO] Remaining hits %"PRIu64"\n", n_hits_kept);
 
-            //for(i=0; i<n_hits_kept; i++){
-                //printf("%"PRIu64"\n", diagonals[i]);
-                //fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,32,32,32,1.0,1.0,0,0\n", filtered_hits_x[i], filtered_hits_y[i], filtered_hits_x[i]+32, filtered_hits_y[i]+32);
-            //}
+            
+
+            // Filtered hits are in order to diagonal (x-y)*l + x (PROVED)
+            // Notice::::: These are sorted equally as with forward hits because the input sequence
+            // Y has already been fully reversed and complemented :) 
+            /*
+            FILE * anything2 = fopen("onlyhits-reverse.csv", "wt");
+            print_header(anything2, query_len, ref_len);
+            for(i=0; i<n_hits_kept; i++){
+                int64_t d = (filtered_hits_x[i] - filtered_hits_y[i]);
+                uint64_t best_yStart = ref_len - filtered_hits_y[i] - 1;
+                uint64_t best_yEnd = ref_len - (filtered_hits_y[i]+32) - 1;
+                //int64_t d = filtered_hits_x[i] + best_yStart;
+                fprintf(anything2, "Frag,%"PRId64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,32,32,32,1.0,1.0,0,0\n", d, filtered_hits_x[i], best_yStart, filtered_hits_x[i]+32, best_yEnd);
+            }
+            fclose(anything2);
+            */
+
+            
+            
             
             ret = cudaFree(d_temp_storage);
             ret = cudaFree(device_hits);
@@ -682,7 +719,7 @@ int main(int argc, char ** argv)
             ret = cudaMalloc(&right_offset, words_at_once * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device offset right frags query. Error: %d\n", ret); exit(-1); }
 
             ret = cudaMemcpy(seq_dev_mem, &query_seq_host[pos_in_query-words_at_once], MIN(query_len - (pos_in_query - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy query sequence to device for frags. Error: %d\n", ret); exit(-1); }
-            ret = cudaMemcpy(seq_dev_mem_aux, &ref_seq_host[pos_in_ref-words_at_once], MIN(ref_len - (pos_in_ref - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device for frags. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(seq_dev_mem_aux, &ref_rev_seq_host[pos_in_ref-words_at_once], MIN(ref_len - (pos_in_ref - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device for frags. Error: %d\n", ret); exit(-1); }
             
             ret = cudaMemcpy(device_filt_hits_x, filtered_hits_x, n_hits_kept * sizeof(uint64_t), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy filtered hits x in device. Error: %d\n", ret); exit(-1); }
             ret = cudaMemcpy(device_filt_hits_y, filtered_hits_y, n_hits_kept * sizeof(uint64_t), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy filtered hits y in device. Error: %d\n", ret); exit(-1); }
@@ -704,11 +741,25 @@ int main(int argc, char ** argv)
             ret = cudaMemcpy(host_left_offset, left_offset, n_hits_kept * sizeof(uint64_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back left offset. Error: %d\n", ret); exit(-1); }
             ret = cudaMemcpy(host_right_offset, right_offset, n_hits_kept * sizeof(uint64_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back right offset. Error: %d\n", ret); exit(-1); }
 
-            /*
+            
+
+            /*           
+            FILE * anything = fopen("onlyfrags-reverse.csv", "wt");
+            print_header(anything, query_len, ref_len);
             for(i=0; i<n_hits_kept; i++){
-                printf("lo: %"PRIu64" ro: %"PRIu64"\n", host_left_offset, host_right_offset);
+                uint64_t best_xStart = filtered_hits_x[i] - host_left_offset[i];
+                uint64_t best_xEnd = filtered_hits_x[i] + host_right_offset[i];
+                uint64_t best_yStart = filtered_hits_y[i] - host_left_offset[i];
+                uint64_t best_yEnd = filtered_hits_y[i] + host_right_offset[i];
+                int64_t d = (filtered_hits_x[i] + filtered_hits_y[i]);
+
+
+                fprintf(anything, "hitx: %"PRIu64" hity: %"PRIu64" (d: %"PRId64") -> Frag,(%"PRId64"),%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64"\n", filtered_hits_x[i], filtered_hits_y[i], d, (int64_t)best_xStart+(int64_t)best_yStart, best_xStart, best_yStart, best_xEnd, best_yEnd, best_xEnd-best_xStart);
+                //fprintf(anything, "Frag,%"PRId64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,%"PRIu64",32,32,1.0,1.0,0,0\n", d, filtered_hits_x[i], filtered_hits_y[i], best_xStart, best_yStart, best_xEnd, best_yEnd, best_xEnd-best_xStart);
             }
+            fclose(anything);
             */
+            
 
             cudaFree(seq_dev_mem);
             cudaFree(seq_dev_mem_aux);

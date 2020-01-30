@@ -19,7 +19,7 @@ __constant__ uint64_t pow4_T[33]={3*1L, 3*4L, 3*16L, 3*64L, 3*256L, 3*1024L, 3*4
     (uint64_t)3*70368744177664L, (uint64_t)3*281474976710656L, (uint64_t)3*1125899906842624L, (uint64_t)3*4503599627370496L, (uint64_t)3*18014398509481984L,
     (uint64_t)3*72057594037927936L, (uint64_t) 3*288230376151711744L, (uint64_t) 3*1152921504606846976L, (uint64_t) 3*4611686018427387904L};
 
-#define MIN_P_IDENT 75
+#define MIN_P_IDENT 90
 
 __global__ void kernel_frags_forward_register(uint64_t * h_p1, uint64_t * h_p2, uint64_t * left_offset, uint64_t * right_offset, const char * seq_x, const char * seq_y, uint64_t query_len, uint64_t ref_len, uint64_t x_seq_off, uint64_t y_seq_off, uint64_t x_lim, uint64_t y_lim){
 
@@ -28,11 +28,13 @@ __global__ void kernel_frags_forward_register(uint64_t * h_p1, uint64_t * h_p2, 
 	int64_t warp_pos_x_left = (int64_t) h_p1[blockIdx.x];
 	int64_t warp_pos_y_left = (int64_t) h_p2[blockIdx.x];
 	int64_t thre_pos_x, thre_pos_y;
-	uint64_t score = 0;
-	int p_ident = 100;
+	uint64_t best_offset_left = (uint64_t) warp_pos_x_left;
+	int64_t score = 32, best_score = 32;
+	//int p_ident = 100;
 	int cell_score;
 	
-	while(p_ident > MIN_P_IDENT && (warp_pos_x_left - 32) >= (int64_t) x_seq_off && (warp_pos_y_left - 32) >= (int64_t) y_seq_off)
+	//while(p_ident > MIN_P_IDENT && (warp_pos_x_left - 32) >= (int64_t) x_seq_off && (warp_pos_y_left - 32) >= (int64_t) y_seq_off)
+	while(score > 0 && (warp_pos_x_left - 32) >= (int64_t) x_seq_off && (warp_pos_y_left - 32) >= (int64_t) y_seq_off)
 	{
 		
 		warp_pos_x_left -= 32;
@@ -53,8 +55,10 @@ __global__ void kernel_frags_forward_register(uint64_t * h_p1, uint64_t * h_p2, 
 
 		
 		int idents = __shfl_sync(0xFFFFFFFF, cell_score, 0);
-		score = score + idents;
-		p_ident = ((100 * score) / (int) ((int64_t) h_p1[blockIdx.x] - warp_pos_x_left));
+		score = score + (int64_t) idents;
+		score = score - (int64_t) (32 - idents);
+		if(score > best_score){ best_score = score; best_offset_left = warp_pos_x_left; }
+		//p_ident = ((100 * score) / (int) ((int64_t) h_p1[blockIdx.x] - warp_pos_x_left));
 		
 	}
 	
@@ -65,11 +69,14 @@ __global__ void kernel_frags_forward_register(uint64_t * h_p1, uint64_t * h_p2, 
 	// RIGHT ALIGNMENT
 	int64_t warp_pos_x_right = (int64_t) h_p1[blockIdx.x] + 32;
 	int64_t warp_pos_y_right = (int64_t) h_p2[blockIdx.x] + 32;
-	score = 0;
-	p_ident = 100;
+	uint64_t best_offset_right = (uint64_t) warp_pos_x_right;
+	score = 32;
+	best_score = 32;
+	//p_ident = 100;
 
 	
-	while(p_ident > MIN_P_IDENT && (warp_pos_x_right + 32) < (int64_t) x_lim && (warp_pos_y_right + 32) < (int64_t) y_lim)
+	//while(p_ident > MIN_P_IDENT && (warp_pos_x_right + 32) < (int64_t) x_lim && (warp_pos_y_right + 32) < (int64_t) y_lim)
+	while(score > 0 && (warp_pos_x_right + 32) < (int64_t) x_lim && (warp_pos_y_right + 32) < (int64_t) y_lim)
 	{
 		thre_pos_x = warp_pos_x_right + threadIdx.x;
 		thre_pos_y = warp_pos_y_right + threadIdx.x;
@@ -83,28 +90,24 @@ __global__ void kernel_frags_forward_register(uint64_t * h_p1, uint64_t * h_p2, 
 			cell_score += __shfl_down_sync(0xFFFFFFFF, cell_score, offset);
 		
 		int idents = __shfl_sync(0xFFFFFFFF, cell_score, 0);
-		score = score + (uint64_t) idents;
-		p_ident = (int) ((100 * score) / (uint64_t) (warp_pos_x_right - ((int64_t) h_p1[blockIdx.x])));
+		score = score + (int64_t) idents;
+		score = score - (int64_t) (32 - idents);
+		//p_ident = (int) ((100 * score) / (uint64_t) (warp_pos_x_right - ((int64_t) h_p1[blockIdx.x])));
 
 		warp_pos_x_right += 32;
 		warp_pos_y_right += 32; 
 
-		/*
-		if(threadIdx.x == 0 && ((uint64_t)warp_pos_x_right - h_p1[blockIdx.x]) > 1000000){
-			printf("It is happening on %"PRIu64"-%"PRIu64"\n", h_p1[blockIdx.x], (uint64_t) warp_pos_x_right);
-			printf("\t%.32s\n", &seq_x[thre_pos_x]);
-			printf("\t%.32s\n", &seq_y[thre_pos_y]);
-		}
-		*/
-		
+		if(score > best_score){ best_score = score; best_offset_right = warp_pos_x_right; }
 
 	}
+	
 	
 
 	// Save at the end
 	if(threadIdx.x == 0){
-		left_offset[blockIdx.x] = h_p1[blockIdx.x] - (uint64_t) warp_pos_x_left;
-		right_offset[blockIdx.x] = (uint64_t) (warp_pos_x_right + 32) - h_p1[blockIdx.x];
+		left_offset[blockIdx.x] = h_p1[blockIdx.x] - (uint64_t) best_offset_left;
+		//right_offset[blockIdx.x] = (uint64_t) (best_offset_right + 32) - h_p1[blockIdx.x];
+		right_offset[blockIdx.x] = (uint64_t) (best_offset_right) - h_p1[blockIdx.x];
 	}
 
 }
@@ -116,21 +119,29 @@ __global__ void kernel_frags_reverse_register(uint64_t * h_p1, uint64_t * h_p2, 
 	int64_t warp_pos_x_left = (int64_t) h_p1[blockIdx.x];
 	int64_t warp_pos_y_left = (int64_t) h_p2[blockIdx.x];
 	int64_t thre_pos_x, thre_pos_y;
-	uint64_t score = 0;
-	int p_ident = 100;
+	uint64_t best_offset_left = (uint64_t) warp_pos_x_left;
+	int64_t score = 32, best_score = 32;
+	//int p_ident = 100;
 	int cell_score;
 	
-	while(p_ident > MIN_P_IDENT && (warp_pos_x_left - 32) >= (int64_t) x_seq_off && (warp_pos_y_left + 32) < (int64_t) y_lim)
+
+	
+	//while(p_ident > MIN_P_IDENT && (warp_pos_x_left - 32) >= (int64_t) x_seq_off && (warp_pos_y_left - 32) >= (int64_t) y_seq_off)
+	while(score > 0 && (warp_pos_x_left - 32) >= (int64_t) x_seq_off && (warp_pos_y_left - 32) >= (int64_t) y_seq_off)
 	{
 		
 		warp_pos_x_left -= 32;
-		warp_pos_y_left += 32;
+		warp_pos_y_left -= 32;
 		thre_pos_x = warp_pos_x_left + threadIdx.x;
 		thre_pos_y = warp_pos_y_left + threadIdx.x;
 
 		
 		char v_x = seq_x[thre_pos_x - (int64_t) x_seq_off];
 		char v_y = seq_y[thre_pos_y - (int64_t) y_seq_off];
+
+		
+		//if(blockIdx.x == 0) printf("T%d -> %c - %c\n", threadIdx.x, v_x, v_y);
+		
 
 		//cell_score = (v_x == v_y && v_x != '\0' && v_y != '\0');
 		cell_score = (v_x == v_y);
@@ -140,9 +151,13 @@ __global__ void kernel_frags_reverse_register(uint64_t * h_p1, uint64_t * h_p2, 
 
 		
 		int idents = __shfl_sync(0xFFFFFFFF, cell_score, 0);
-		score = score + idents;
-		p_ident = ((100 * score) / (int) ((int64_t) h_p1[blockIdx.x] - warp_pos_x_left));
+		score = score + (int64_t) idents;
+		score = score - (int64_t) (32 - idents);
+		if(score > best_score){ best_score = score; best_offset_left = warp_pos_x_left; }
+		//p_ident = ((100 * score) / (int) ((int64_t) h_p1[blockIdx.x] - warp_pos_x_left));
 		
+		
+
 	}
 	
 	
@@ -152,11 +167,14 @@ __global__ void kernel_frags_reverse_register(uint64_t * h_p1, uint64_t * h_p2, 
 	// RIGHT ALIGNMENT
 	int64_t warp_pos_x_right = (int64_t) h_p1[blockIdx.x] + 32;
 	int64_t warp_pos_y_right = (int64_t) h_p2[blockIdx.x] + 32;
-	score = 0;
-	p_ident = 100;
+	uint64_t best_offset_right = (uint64_t) warp_pos_x_right;
+	score = 32;
+	best_score = 32;
+	//p_ident = 100;
 
-	/*
-	while(p_ident > MIN_P_IDENT && (warp_pos_x_right + 32) < (int64_t) x_lim && (warp_pos_y_right + 32) < (int64_t) y_lim)
+	
+	//while(p_ident > MIN_P_IDENT && (warp_pos_x_right + 32) < (int64_t) x_lim && (warp_pos_y_right + 32) < (int64_t) y_lim)
+	while(score > 0 && (warp_pos_x_right + 32) < (int64_t) x_lim && (warp_pos_y_right + 32) < (int64_t) y_lim)
 	{
 		thre_pos_x = warp_pos_x_right + threadIdx.x;
 		thre_pos_y = warp_pos_y_right + threadIdx.x;
@@ -170,20 +188,25 @@ __global__ void kernel_frags_reverse_register(uint64_t * h_p1, uint64_t * h_p2, 
 			cell_score += __shfl_down_sync(0xFFFFFFFF, cell_score, offset);
 		
 		int idents = __shfl_sync(0xFFFFFFFF, cell_score, 0);
-		score = score + (uint64_t) idents;
-		p_ident = (int) ((100 * score) / (uint64_t) (warp_pos_x_right - ((int64_t) h_p1[blockIdx.x])));
+		score = score + (int64_t) idents;
+		score = score - (int64_t) (32 - idents);
+		//p_ident = (int) ((100 * score) / (uint64_t) (warp_pos_x_right - ((int64_t) h_p1[blockIdx.x])));
 
 		warp_pos_x_right += 32;
 		warp_pos_y_right += 32; 
 
+		if(score > best_score){ best_score = score; best_offset_right = warp_pos_x_right; }
+
 	}
-	*/
+	
+	
 	
 
 	// Save at the end
 	if(threadIdx.x == 0){
-		left_offset[blockIdx.x] = h_p1[blockIdx.x] - (uint64_t) warp_pos_x_left;
-		right_offset[blockIdx.x] = (uint64_t) (warp_pos_x_right + 32) - h_p1[blockIdx.x];
+		left_offset[blockIdx.x] = h_p1[blockIdx.x] - (uint64_t) best_offset_left;
+		//right_offset[blockIdx.x] = (uint64_t) (best_offset_right + 32) - h_p1[blockIdx.x];
+		right_offset[blockIdx.x] = (uint64_t) (best_offset_right) - h_p1[blockIdx.x];
 	}
 
 }
