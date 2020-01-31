@@ -16,7 +16,7 @@ void print_header(FILE * out, uint64_t query_len, uint64_t ref_len);
 
 int main(int argc, char ** argv)
 {
-    uint64_t i, min_length = 32;
+    uint64_t i, min_length = 64;
     unsigned selected_device = 0;
     FILE * query = NULL, * ref = NULL, * out = NULL;
     init_args(argc, argv, &query, &selected_device, &ref, &out, &min_length);
@@ -26,9 +26,10 @@ int main(int argc, char ** argv)
     ////////////////////////////////////////////////////////////////////////////////
 
     int ret_num_devices;
-    unsigned compute_units;
+    //unsigned compute_units;
     uint64_t local_device_RAM, global_device_RAM;
-    int work_group_dimensions[3], work_group_size_local;
+    int work_group_dimensions[3];
+    //int work_group_size_local;
     int ret;
     
     // Query how many devices there are
@@ -44,9 +45,9 @@ int main(int argc, char ** argv)
         fprintf(stdout, "\t\tGlobal mem   : %"PRIu64" (%"PRIu64" MB)\n", (uint64_t) global_device_RAM, (uint64_t) global_device_RAM / (1024*1024));
         local_device_RAM = device.sharedMemPerBlock;
         //fprintf(stdout, "\t\tLocal mem    : %"PRIu64" (%"PRIu64" KB)\n", (uint64_t) local_device_RAM, (uint64_t) local_device_RAM / (1024));
-        compute_units = device.multiProcessorCount;
+        //compute_units = device.multiProcessorCount;
         //fprintf(stdout, "\t\tCompute units: %"PRIu64"\n", (uint64_t) compute_units);
-        work_group_size_local = device.maxThreadsPerBlock;
+        //work_group_size_local = device.maxThreadsPerBlock;
         //fprintf(stdout, "\t\tMax work group size: %d\n", work_group_size_local);
         memcpy(work_group_dimensions, device.maxThreadsDim, 3*sizeof(int));
         //fprintf(stdout, "\t\tWork size dimensions: (%d, %d, %d)\n", work_group_dimensions[0], work_group_dimensions[1], work_group_dimensions[2]);
@@ -67,7 +68,7 @@ int main(int argc, char ** argv)
 
     // Calculate how much ram we can use for every chunk
     uint64_t effective_global_ram =  (global_device_RAM - 100*1024*1024); //Minus 100 MBs
-    uint64_t ram_to_be_used = (effective_global_ram) / (2 * (sizeof(Word) + sizeof(char))); //
+    uint64_t ram_to_be_used = (effective_global_ram) / (2 * (sizeof(Word) + sizeof(char))); // update this with max usage
     uint64_t words_at_once = ram_to_be_used;
     //words_at_once = words_at_once/4; printf("WAAAAAAAAAAAAA\nAAAAAAARNINGGGGGGG\nGGGGGGGGGGGGGGGGGGGGGG\n");
 
@@ -145,9 +146,6 @@ int main(int argc, char ** argv)
     ret = cudaMemcpy(ref_rev_seq_host, seq_dev_mem_reverse_aux, ref_len, cudaMemcpyDeviceToHost);
     if(ret != cudaSuccess){ fprintf(stderr, "Could not copy reference sequence to device for reversing. Error: %d\n", ret); exit(-1); }
 
-    //printf("WO WO OWOW REMOVE THIS URGENT!!!!!!!! ALL IS BAD \n");
-    //memcpy(ref_rev_seq_host, ref_seq_host, ref_len);
-    //printf("WO WO OWOW REMOVE THIS URGENT!!!!!!!! ALL IS BAD \n");
 
     cudaFree(seq_dev_mem_aux);
     cudaFree(seq_dev_mem_reverse_aux);
@@ -163,8 +161,6 @@ int main(int argc, char ** argv)
 
     // Write header to CSV
     print_header(out, query_len, ref_len);
-    
-    clock_t begin;
 
     ////////////////////////////////////////////////////////////////////////////////
     // Allocation of pointers
@@ -495,6 +491,7 @@ int main(int argc, char ** argv)
             ret = cudaMemcpy(device_filt_hits_y, filtered_hits_y, n_hits_kept * sizeof(uint64_t), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy filtered hits y in device. Error: %d\n", ret); exit(-1); }
             ret = cudaMemset(left_offset, 0x0, n_hits_kept * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy left offset in device. Error: %d\n", ret); exit(-1); }
             ret = cudaMemset(right_offset, 0x0, n_hits_kept * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy right offset in device. Error: %d\n", ret); exit(-1); }
+
 
             //
             //for(i=n_hits_kept-1; i>1; i--){

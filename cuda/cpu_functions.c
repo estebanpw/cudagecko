@@ -77,7 +77,10 @@ void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits
 
                 if((best_xEnd - best_xStart) >= min_length){
                     
-                    fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64",75,75,0.75,0.75,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l);
+                    // Type,xStart,yStart,xEnd,yEnd,strand(f/r),block,length,score,ident,similarity,%%ident,SeqX,SeqY
+                    uint64_t score = (uint64_t)(best_l * MIN_P_IDENT);
+                    fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64",%"PRIu64",%"PRIu64",80.01,80.01,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l, score, score);
+                    ++written_frags;
                 }
                 max_id = current+1;
 
@@ -86,7 +89,6 @@ void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits
                 build_frag(&xStart, &xEnd, &yStart, &yEnd, &curr_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, max_id);
                 //fprintf(stdout, "I am [%"PRIu64"]: Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64", his hit [%"PRIu64", %"PRIu64"]\n", max_id, xStart, yStart, xEnd, yEnd, strand, curr_l, filtered_hits_x[max_id], filtered_hits_y[max_id]);
 
-                ++written_frags;
             }
         }
 
@@ -116,18 +118,18 @@ void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits
                 build_frag(&best_xStart, &best_xEnd, &best_yStart, &best_yEnd, &best_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, max_id);
 
                 if((best_xEnd - best_xStart) >= min_length){
-                    int64_t d = best_xStart + best_yStart;
+                    //int64_t d = best_xStart + best_yStart;
                     best_yStart = ref_len - best_yStart - 1;
                     best_yEnd = ref_len - best_yEnd - 1;
-                    fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64",75,75,0.75,0.75,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l);
+                    uint64_t score = (uint64_t)(best_l * MIN_P_IDENT);
+                    fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64",%"PRIu64",%"PRIu64",80.01,80.01,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l, score, score);
+                    ++written_frags;
                     
                 }
                 max_id = current+1;
 
                 build_frag(&xStart, &xEnd, &yStart, &yEnd, &curr_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, max_id);
                 //fprintf(stdout, "I am [%"PRIu64"]: Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64", his hit [%"PRIu64", %"PRIu64"]\n", max_id, xStart, yStart, xEnd, yEnd, strand, curr_l, filtered_hits_x[max_id], filtered_hits_y[max_id]);
-
-                ++written_frags;
             }
         }
 
@@ -148,7 +150,7 @@ uint64_t generate_hits(uint64_t words_at_once, uint64_t * diagonals, Hit * hits,
     uint64_t id_x = 0, id_y = 0, n_hits_found = 0;
     uint64_t diff_offset = ref_len;
     uint64_t diag_len = MAX(query_len, ref_len);
-    int64_t last_position_y = -1;
+    //int64_t last_position_y = -1;
 
     
     while(id_x < items_x || id_y < items_y) {
