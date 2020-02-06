@@ -140,7 +140,7 @@ void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits
 
 }
 
-uint64_t generate_hits(uint64_t words_at_once, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
+uint64_t generate_hits_fast(uint64_t words_at_once, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
     uint64_t * keys_y, uint64_t * values_x, uint64_t * values_y, uint64_t items_x, uint64_t items_y, uint64_t query_len, uint64_t ref_len){
 
     // Nota: para generar TODOS los hits hay que tener en cuenta que si hay hits repetidos en
@@ -192,6 +192,112 @@ uint64_t generate_hits(uint64_t words_at_once, uint64_t * diagonals, Hit * hits,
         else {
             ++id_y; 
             
+        }
+    }
+
+    //printf("Generated %"PRIu64" hits \n", n_hits_found);
+    return n_hits_found;
+
+}
+
+uint64_t generate_hits_quadratic(uint64_t words_at_once, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
+    uint64_t * keys_y, uint64_t * values_x, uint64_t * values_y, uint64_t items_x, uint64_t items_y, uint64_t query_len, uint64_t ref_len){
+
+    // Nota: para generar TODOS los hits hay que tener en cuenta que si hay hits repetidos en
+    // ambos diccionarios se debe volver atrás cuando se encuentra uno distinto
+    // Si no, solo saldra ruido horizontal o vertical 
+
+    uint64_t id_x = 0, id_y = 0, n_hits_found = 0;
+    uint64_t diff_offset = ref_len;
+    uint64_t diag_len = MAX(query_len, ref_len);
+    //int64_t last_position_y = -1;
+
+    
+    for(id_x=0; id_x < items_x ; id_x++)
+    {
+
+        for(id_y=0; id_y < items_y; id_y++) 
+        {
+
+            // Compare
+            if(keys_x[id_x] == keys_y[id_y] && values_x[id_x] != 0xFFFFFFFFFFFFFFFF && values_y[id_y] != 0xFFFFFFFFFFFFFFFF) {
+                
+                //if(last_position_y == -1) last_position_y = (int64_t) id_y;
+                //if(last_position_x == -1) last_position_x = (int64_t) id_x;
+
+                // This is a hit
+                //printf("Made hit: ");
+                hits[n_hits_found].p1 = values_x[id_x];
+                hits[n_hits_found].p2 = values_y[id_y];
+                // Compute diagonal value with associated x value -> (x - y) * Ld + x 
+                // Le estoy sumando el diff_offset (i.e. lo mas largo que puede ser la y) para que siempre sean positivos (como x es positivo)
+                // pues solo la y resta
+                // This is good enough for sequences length up to 2,147,483,648 bp 
+                diagonals[n_hits_found] =  ((diff_offset + values_x[id_x]) - values_y[id_y]) * diag_len + (diff_offset + values_x[id_x]);
+
+                //printf("Matching hash %"PRIu64" with %"PRIu64" @ (%"PRIu64", %"PRIu64")\n", keys_x[id_x], keys_y[id_y], values_x[id_x], values_y[id_y]);
+
+                ++n_hits_found;
+                if(n_hits_found == words_at_once){ fprintf(stderr, "Reached maximum limit of hits\n"); }
+
+                //printf("next comp is %"PRIu64" with %"PRIu64"\n", keys_x[id_x], keys_y[id_y]);
+            }
+        }
+    }
+
+    //printf("Generated %"PRIu64" hits \n", n_hits_found);
+    return n_hits_found;
+
+}
+
+
+uint64_t generate_hits_sensitive(uint64_t words_at_once, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
+    uint64_t * keys_y, uint64_t * values_x, uint64_t * values_y, uint64_t items_x, uint64_t items_y, uint64_t query_len, uint64_t ref_len){
+
+    // Nota: para generar TODOS los hits hay que tener en cuenta que si hay hits repetidos en
+    // ambos diccionarios se debe volver atrás cuando se encuentra uno distinto
+    // Si no, solo saldra ruido horizontal o vertical 
+
+    uint64_t id_x = 0, id_y = 0, n_hits_found = 0;
+    uint64_t diff_offset = ref_len;
+    uint64_t diag_len = MAX(query_len, ref_len);
+    //int64_t last_position_y = -1;
+
+    uint64_t prev_hash = 0xFFFFFFFFFFFFFFFF, returning_y_pos = 0; // it would be very wierd if the sequence only had TT's
+
+    
+    while(id_x < items_x || id_y < items_y) {
+
+        // Compare
+        if(id_x == items_x || id_y == items_y){ break; }
+
+        
+        if(keys_x[id_x] == keys_y[id_y] && values_x[id_x] != 0xFFFFFFFFFFFFFFFF && values_y[id_y] != 0xFFFFFFFFFFFFFFFF) {
+
+            uint64_t curr_id_y;
+
+            for(curr_id_y = id_y; curr_id_y < items_y; curr_id_y++){
+
+                if(keys_x[id_x] != keys_y[curr_id_y] || values_x[id_x] == 0xFFFFFFFFFFFFFFFF || values_y[curr_id_y] == 0xFFFFFFFFFFFFFFFF) break;
+
+                hits[n_hits_found].p1 = values_x[id_x];
+                hits[n_hits_found].p2 = values_y[curr_id_y];
+
+                diagonals[n_hits_found] =  ((diff_offset + values_x[id_x]) - values_y[curr_id_y]) * diag_len + (diff_offset + values_x[id_x]);
+
+                ++n_hits_found;
+                if(n_hits_found == words_at_once){ fprintf(stderr, "Reached maximum limit of hits (max %"PRIu64")\n", n_hits_found); }
+
+            }
+
+            ++id_x;
+            
+        }
+        else if(keys_x[id_x] < keys_y[id_y]){
+            ++id_x;
+        } 
+        else {
+            ++id_y; 
         }
     }
 
@@ -293,7 +399,7 @@ void read_kmers(uint64_t query_l, char * seq_x, uint64_t * keys_x, uint64_t * va
     }
 }
 
-void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, FILE ** ref, FILE ** out, uint64_t * min_length){
+void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, FILE ** ref, FILE ** out, uint64_t * min_length, int * fast){
     
     int pNum = 0;
     char * p1 = NULL, * p2 = NULL;
@@ -304,6 +410,8 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
             fprintf(stdout, "           GECKOCUDA -query [file] -ref [file] -dev [device]\n");
             fprintf(stdout, "OPTIONAL:\n");
             fprintf(stdout, "           -len        Minimum length of a frag (default 32)\n");
+            fprintf(stdout, "           --sensitive Runs in sensitive mode as opposed to fast (default)\n");
+            fprintf(stdout, "                       (fast mode can skip highly repeated seeds)\n");
             fprintf(stdout, "           --help      Shows help for program usage\n");
             fprintf(stdout, "\n");
             exit(1);
@@ -329,6 +437,10 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
         if(strcmp(av[pNum], "-len") == 0){
             *min_length = (uint64_t) atoi(av[pNum+1]);
             if(atoi(av[pNum+1]) < 1) { fprintf(stderr, "Length must be >0\n"); exit(-1); }
+        }
+
+        if(strcmp(av[pNum], "--sensitive") == 0){
+            *fast = 0;
         }
 
         pNum++;

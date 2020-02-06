@@ -17,9 +17,10 @@ void print_header(FILE * out, uint64_t query_len, uint64_t ref_len);
 int main(int argc, char ** argv)
 {
     uint64_t i, min_length = 64;
+    int fast = 1; // fast is default
     unsigned selected_device = 0;
     FILE * query = NULL, * ref = NULL, * out = NULL;
-    init_args(argc, argv, &query, &selected_device, &ref, &out, &min_length);
+    init_args(argc, argv, &query, &selected_device, &ref, &out, &min_length, &fast);
 
     ////////////////////////////////////////////////////////////////////////////////
     // Get info of devices
@@ -67,15 +68,21 @@ int main(int argc, char ** argv)
 
 
     // Calculate how much ram we can use for every chunk
-    uint64_t effective_global_ram =  (global_device_RAM - 100*1024*1024); //Minus 100 MBs
-    uint64_t ram_to_be_used = (effective_global_ram) / (2 * (sizeof(Word) + sizeof(char))); // update this with max usage
+    // The maximum amount of RAM required simultaneously is words_at_once * 34
+    uint64_t effective_global_ram =  (global_device_RAM - 100*1024*1024); //Minus 100 MBs for other stuff
+    uint64_t factor = 34;
+    uint64_t ram_to_be_used = (effective_global_ram) / (factor); // update this with max usage
     uint64_t words_at_once = ram_to_be_used;
-    //words_at_once = words_at_once/4; printf("WAAAAAAAAAAAAA\nAAAAAAARNINGGGGGGG\nGGGGGGGGGGGGGGGGGGGGGG\n");
+    if(fast == 0) words_at_once = words_at_once/6;
 
 
     uint64_t * keys, * values, * keys_buf, * values_buf;
-    fprintf(stdout, "[INFO] I will use %"PRIu64" (%"PRIu64" MB) bytes for hash (you can have %"PRIu64" entries) and their buffers\n", words_at_once * 2 * sizeof(Word), (words_at_once * 2 * sizeof(Word))/(1024*1024), words_at_once);
+    fprintf(stdout, "[INFO] I will use %"PRIu64" (%"PRIu64" MB) bytes for hash (you can have %"PRIu64" entries) and their buffers\n", words_at_once * factor, (words_at_once * factor)/(1024*1024), words_at_once);
     fprintf(stdout, "[INFO] Filtering at a minimum length of %"PRIu64" bps\n", min_length);
+    if(fast == 1) 
+        fprintf(stdout, "[INFO] Running on fast mode (some repetitive seeds will be skipped)\n");
+    else
+        fprintf(stdout, "[INFO] Running on sensitive mode (ALL seeds are computed)\n");
 
     
 
@@ -397,8 +404,11 @@ int main(int argc, char ** argv)
             cudaFree(keys_buf);
             cudaFree(values_buf);
 
-
-            uint64_t n_hits_found = generate_hits(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
+            uint64_t n_hits_found;
+            if(fast == 1)
+                n_hits_found = generate_hits_fast(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
+            else
+                n_hits_found = generate_hits_sensitive(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             
             fprintf(stdout, "[INFO] Generated %"PRIu64" hits on split %d -> (%d%%)\n", n_hits_found, split, (int)((100*MIN(pos_in_ref, ref_len))/ref_len));
 
@@ -427,7 +437,7 @@ int main(int argc, char ** argv)
 
             // We will actually sort the diagonals with associated values 0,1,2... to n and use these to index the hits array
             ret = cudaMemcpy(device_hits, ascending_numbers, n_hits_found*sizeof(uint64_t), cudaMemcpyHostToDevice);
-            if(ret != cudaSuccess){ fprintf(stderr, "Uploading device hits. Error: %d\n", ret); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stderr, "Uploading forward device hits. Error: %d\n", ret); exit(-1); }
 
             ret = cudaMemcpy(device_diagonals, diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyHostToDevice);
             if(ret != cudaSuccess){ fprintf(stderr, "Uploading device diagonals. Error: %d\n", ret); exit(-1); }
@@ -509,7 +519,10 @@ int main(int argc, char ** argv)
             ret = cudaMemcpy(host_right_offset, right_offset, n_hits_kept * sizeof(uint64_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back right offset. Error: %d\n", ret); exit(-1); }
 
             /*
-            FILE * anything3 = fopen("onlyfrags-forward.csv", "wt");
+            char name[100] = "\0";
+            sprintf(name, "onlyfrags-forward_%d", split);
+
+            FILE * anything3 = fopen(name, "wt");
             print_header(anything3, query_len, ref_len);
             for(i=0; i<n_hits_kept; i++){
                 uint64_t best_xStart = filtered_hits_x[i] - host_left_offset[i];
@@ -518,11 +531,13 @@ int main(int argc, char ** argv)
                 uint64_t best_yEnd = filtered_hits_y[i] + host_right_offset[i];
 
                 int64_t d = (filtered_hits_x[i] - filtered_hits_y[i]);
-                fprintf(anything3, "hitx: %"PRIu64" hity: %"PRIu64" (d: %"PRId64") -> Frag,(%"PRId64"),%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64"\n", filtered_hits_x[i], filtered_hits_y[i], d, (int64_t)best_xStart-(int64_t)best_yStart, best_xStart, best_yStart, best_xEnd, best_yEnd, best_xEnd-best_xStart);
-                //fprintf(anything, "Frag,%"PRId64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,%"PRIu64",32,32,1.0,1.0,0,0\n", d, filtered_hits_x[i], filtered_hits_y[i], best_xStart, best_yStart, best_xEnd, best_yEnd, best_xEnd-best_xStart);
+                //fprintf(anything3, "hitx: %"PRIu64" hity: %"PRIu64" (d: %"PRId64") -> Frag,(%"PRId64"),%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64"\n", filtered_hits_x[i], filtered_hits_y[i], d, (int64_t)best_xStart-(int64_t)best_yStart, best_xStart, best_yStart, best_xEnd, best_yEnd, best_xEnd-best_xStart);
+                //fprintf(anything3, "Frag,%"PRId64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,%"PRIu64",32,32,1.0,1.0,0,0\n", d, filtered_hits_x[i], filtered_hits_y[i], best_xStart, best_yStart, best_xEnd, best_yEnd, best_xEnd-best_xStart);
+                fprintf(anything3, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,%"PRIu64",32,32,1.0,1.0,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, best_xEnd-best_xStart);
             }
             fclose(anything3);
             */
+            
 
             cudaFree(seq_dev_mem);
             cudaFree(seq_dev_mem_aux);
@@ -622,8 +637,11 @@ int main(int argc, char ** argv)
             cudaFree(keys_buf);
             cudaFree(values_buf);
 
-
-            uint64_t n_hits_found = generate_hits(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
+            uint64_t n_hits_found;
+            if(fast == 1)
+                n_hits_found = generate_hits_fast(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
+            else
+                n_hits_found = generate_hits_sensitive(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             
             fprintf(stdout, "[INFO] Generated %"PRIu64" hits on reversed split %d -> (%d%%)\n", n_hits_found, split, (int)((100*MIN(pos_in_ref, ref_len))/ref_len));
 
@@ -642,7 +660,7 @@ int main(int argc, char ** argv)
 
             // We will actually sort the diagonals with associated values 0,1,2... to n and use these to index the hits array
             ret = cudaMemcpy(device_hits, ascending_numbers, n_hits_found*sizeof(uint64_t), cudaMemcpyHostToDevice);
-            if(ret != cudaSuccess){ fprintf(stderr, "Uploading device hits. Error: %d\n", ret); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stderr, "Uploading device reverse hits. Error: %d\n", ret); exit(-1); }
 
             ret = cudaMemcpy(device_diagonals, diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyHostToDevice);
             if(ret != cudaSuccess){ fprintf(stderr, "Uploading device diagonals. Error: %d\n", ret); exit(-1); }
