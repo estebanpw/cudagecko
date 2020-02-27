@@ -252,7 +252,7 @@ uint64_t generate_hits_quadratic(uint64_t words_at_once, uint64_t * diagonals, H
 
 
 uint64_t generate_hits_sensitive(uint64_t words_at_once, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
-    uint64_t * keys_y, uint64_t * values_x, uint64_t * values_y, uint64_t items_x, uint64_t items_y, uint64_t query_len, uint64_t ref_len){
+    uint64_t * keys_y, uint64_t * values_x, uint64_t * values_y, uint64_t items_x, uint64_t items_y, uint64_t query_len, uint64_t ref_len, uint64_t max_frequency){
 
     // Nota: para generar TODOS los hits hay que tener en cuenta que si hay hits repetidos en
     // ambos diccionarios se debe volver atrás cuando se encuentra uno distinto
@@ -261,6 +261,7 @@ uint64_t generate_hits_sensitive(uint64_t words_at_once, uint64_t * diagonals, H
     uint64_t id_x = 0, id_y = 0, n_hits_found = 0;
     uint64_t diff_offset = ref_len;
     uint64_t diag_len = MAX(query_len, ref_len);
+    uint64_t current_hits = 0;
     //int64_t last_position_y = -1;
 
     uint64_t prev_hash = 0xFFFFFFFFFFFFFFFF, returning_y_pos = 0; // it would be very wierd if the sequence only had TT's
@@ -286,11 +287,14 @@ uint64_t generate_hits_sensitive(uint64_t words_at_once, uint64_t * diagonals, H
                 diagonals[n_hits_found] =  ((diff_offset + values_x[id_x]) - values_y[curr_id_y]) * diag_len + (diff_offset + values_x[id_x]);
 
                 ++n_hits_found;
+                ++current_hits;
+                if(current_hits == max_frequency) break;
                 if(n_hits_found == words_at_once){ fprintf(stderr, "Reached maximum limit of hits (max %"PRIu64")\n", n_hits_found); }
 
             }
 
             ++id_x;
+            current_hits = 0;
             
         }
         else if(keys_x[id_x] < keys_y[id_y]){
@@ -399,7 +403,7 @@ void read_kmers(uint64_t query_l, char * seq_x, uint64_t * keys_x, uint64_t * va
     }
 }
 
-void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, FILE ** ref, FILE ** out, uint64_t * min_length, int * fast){
+void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, FILE ** ref, FILE ** out, uint64_t * min_length, int * fast, uint64_t * max_frequency){
     
     int pNum = 0;
     char * p1 = NULL, * p2 = NULL;
@@ -411,6 +415,7 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
             fprintf(stdout, "OPTIONAL:\n");
             fprintf(stdout, "           -len        Minimum length of a frag (default 32)\n");
             fprintf(stdout, "           --sensitive Runs in sensitive mode as opposed to fast (default)\n");
+            fprintf(stdout, "           -max_freq   [only works in --sensitive] Maximum frequency per hit (default: unlimited)\n");
             fprintf(stdout, "                       (fast mode can skip highly repeated seeds)\n");
             fprintf(stdout, "           --help      Shows help for program usage\n");
             fprintf(stdout, "\n");
@@ -443,6 +448,11 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
             *fast = 0;
         }
 
+        if(strcmp(av[pNum], "-max_freq") == 0){
+            *max_frequency = (uint64_t) atoi(av[pNum+1]);
+            if(atoi(av[pNum+1]) < 1) { fprintf(stderr, "Frequency must be >0\n"); exit(-1); }
+        }
+
         pNum++;
 
     }   
@@ -455,7 +465,8 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
     *out = fopen(outname, "wt");
     if(*out == NULL){ fprintf(stderr, "Could not open output file\n"); exit(-1); }
     if(p1 != NULL) free(p1);
-    if(p2 != NULL) free(p2);   
+    if(p2 != NULL) free(p2);
+    if(*fast != 0 && *max_frequency != 0){ fprintf(stderr, "Sensitive mode must be enabled to use max frequency per hits (use --sensitive)\n"); exit(-1);}
 }
 
 

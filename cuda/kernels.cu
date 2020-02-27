@@ -25,7 +25,8 @@ __global__ void kernel_frags_forward_register(uint64_t * h_p1, uint64_t * h_p2, 
 
 
 	// LEFT ALIGNMENT
-	int64_t warp_pos_x_left = (int64_t) h_p1[blockIdx.x];
+	int64_t hp1 = (int64_t) h_p1[blockIdx.x];
+	int64_t warp_pos_x_left = hp1;
 	int64_t warp_pos_y_left = (int64_t) h_p2[blockIdx.x];
 	int64_t thre_pos_x, thre_pos_y;
 	uint64_t best_offset_left = (uint64_t) warp_pos_x_left;
@@ -57,7 +58,7 @@ __global__ void kernel_frags_forward_register(uint64_t * h_p1, uint64_t * h_p2, 
 		int idents = __shfl_sync(0xFFFFFFFF, cell_score, 0);
 		score = score + (int64_t) idents;
 		score = score - (int64_t) (32 - idents);
-		p_ident = ((100 * score) / (int) ((int64_t) h_p1[blockIdx.x] - warp_pos_x_left));
+		p_ident = ((100 * score) / (int) (hp1 - warp_pos_x_left));
 		if(score > best_score && p_ident >= MIN_P_IDENT){ best_score = score; best_offset_left = warp_pos_x_left; }
 		
 		
@@ -68,7 +69,7 @@ __global__ void kernel_frags_forward_register(uint64_t * h_p1, uint64_t * h_p2, 
 	
 
 	// RIGHT ALIGNMENT
-	int64_t warp_pos_x_right = (int64_t) h_p1[blockIdx.x] + 32;
+	int64_t warp_pos_x_right = hp1 + 32;
 	int64_t warp_pos_y_right = (int64_t) h_p2[blockIdx.x] + 32;
 	uint64_t best_offset_right = (uint64_t) warp_pos_x_right;
 	score = 32;
@@ -93,7 +94,7 @@ __global__ void kernel_frags_forward_register(uint64_t * h_p1, uint64_t * h_p2, 
 		int idents = __shfl_sync(0xFFFFFFFF, cell_score, 0);
 		score = score + (int64_t) idents;
 		score = score - (int64_t) (32 - idents);
-		p_ident = (int) ((100 * score) / (int64_t) (warp_pos_x_right - ((int64_t) h_p1[blockIdx.x])));
+		p_ident = (int) ((100 * score) / (int64_t) (warp_pos_x_right - (hp1)));
 
 		warp_pos_x_right += 32;
 		warp_pos_y_right += 32; 
@@ -106,9 +107,9 @@ __global__ void kernel_frags_forward_register(uint64_t * h_p1, uint64_t * h_p2, 
 
 	// Save at the end
 	if(threadIdx.x == 0){
-		left_offset[blockIdx.x] = h_p1[blockIdx.x] - (uint64_t) best_offset_left;
+		left_offset[blockIdx.x] = hp1 - (uint64_t) best_offset_left;
 		//right_offset[blockIdx.x] = (uint64_t) (best_offset_right + 32) - h_p1[blockIdx.x];
-		right_offset[blockIdx.x] = (uint64_t) (best_offset_right) - h_p1[blockIdx.x];
+		right_offset[blockIdx.x] = (uint64_t) (best_offset_right) - hp1;
 	}
 
 }
@@ -117,7 +118,8 @@ __global__ void kernel_frags_forward_register(uint64_t * h_p1, uint64_t * h_p2, 
 __global__ void kernel_frags_reverse_register(uint64_t * h_p1, uint64_t * h_p2, uint64_t * left_offset, uint64_t * right_offset, const char * seq_x, const char * seq_y, uint64_t query_len, uint64_t ref_len, uint64_t x_seq_off, uint64_t y_seq_off, uint64_t x_lim, uint64_t y_lim){
 
 	// LEFT ALIGNMENT
-	int64_t warp_pos_x_left = (int64_t) h_p1[blockIdx.x];
+	int64_t hp1 = (int64_t) h_p1[blockIdx.x];
+	int64_t warp_pos_x_left = hp1;
 	int64_t warp_pos_y_left = (int64_t) h_p2[blockIdx.x];
 	int64_t thre_pos_x, thre_pos_y;
 	uint64_t best_offset_left = (uint64_t) warp_pos_x_left;
@@ -154,7 +156,7 @@ __global__ void kernel_frags_reverse_register(uint64_t * h_p1, uint64_t * h_p2, 
 		int idents = __shfl_sync(0xFFFFFFFF, cell_score, 0);
 		score = score + (int64_t) idents;
 		score = score - (int64_t) (32 - idents);
-		p_ident = ((100 * score) / (int) ((int64_t) h_p1[blockIdx.x] - warp_pos_x_left));
+		p_ident = ((100 * score) / (int) (hp1 - warp_pos_x_left));
 		if(score > best_score && p_ident >= MIN_P_IDENT){ best_score = score; best_offset_left = warp_pos_x_left; }
 		
 		
@@ -167,7 +169,7 @@ __global__ void kernel_frags_reverse_register(uint64_t * h_p1, uint64_t * h_p2, 
 	
 
 	// RIGHT ALIGNMENT
-	int64_t warp_pos_x_right = (int64_t) h_p1[blockIdx.x] + 32;
+	int64_t warp_pos_x_right = hp1 + 32;
 	int64_t warp_pos_y_right = (int64_t) h_p2[blockIdx.x] + 32;
 	uint64_t best_offset_right = (uint64_t) warp_pos_x_right;
 	score = 32;
@@ -192,7 +194,7 @@ __global__ void kernel_frags_reverse_register(uint64_t * h_p1, uint64_t * h_p2, 
 		int idents = __shfl_sync(0xFFFFFFFF, cell_score, 0);
 		score = score + (int64_t) idents;
 		score = score - (int64_t) (32 - idents);
-		p_ident = (int) ((100 * score) / (int64_t) (warp_pos_x_right - ((int64_t) h_p1[blockIdx.x])));
+		p_ident = (int) ((100 * score) / (int64_t) (warp_pos_x_right - (hp1)));
 
 		warp_pos_x_right += 32;
 		warp_pos_y_right += 32; 
@@ -206,9 +208,9 @@ __global__ void kernel_frags_reverse_register(uint64_t * h_p1, uint64_t * h_p2, 
 
 	// Save at the end
 	if(threadIdx.x == 0){
-		left_offset[blockIdx.x] = h_p1[blockIdx.x] - (uint64_t) best_offset_left;
+		left_offset[blockIdx.x] = hp1 - (uint64_t) best_offset_left;
 		//right_offset[blockIdx.x] = (uint64_t) (best_offset_right + 32) - h_p1[blockIdx.x];
-		right_offset[blockIdx.x] = (uint64_t) (best_offset_right) - h_p1[blockIdx.x];
+		right_offset[blockIdx.x] = (uint64_t) (best_offset_right) - hp1;
 	}
 
 }
@@ -244,9 +246,22 @@ __global__ void kernel_register_fast_hash_rotational(uint64_t * hashes, uint64_t
 	bad = 0xFFFFFFFFFFFFFFFF;
 
 	// Compute the last kmer so that we can make a collaborative algorithm
-	// The last INIT kmer starts on 124, located on thread 15 on the fourth byte
+	// The last INIT kmer starts on 124 (that is 128-4), located on thread 15 on the fourth byte (124/8 = 15.5, 0.5 * 8 = 4)
+	// So we distribute the next bytes to the other threads by shuffle
+	// Thread 0 will get bytes from thread (124+0)/8 = 15.5 -> thread 15, 
+	// and so will the following 4 threads until thread 16 is reached and so on
 	temp_value = __shfl_sync(0xFFFFFFFF, value, (124 + threadIdx.x) >> 3);
+	// We fetched the full 8 bytes from the value variable, now we need to select only bytes 124
+	// Do so by fetching byte i.e. thread 0 has fetched bytes from ULLI from thread 15
+	// That is 15*8 = 120 to 127 bytes, but it needs to stick to 124
+	//int remainder = ((124 + threadIdx.x) & 2) << 3; // This is % 3 and multiply by 8
+	// Which results in 4 for thread 0
+
 	byte = (char) (temp_value >> ((threadIdx.x & 7) << 3));
+	//byte = (char) (temp_value >> (8*(remainder-1)));
+	
+
+	//if(blockIdx.x == 0) printf("%d -> %c (my val: %d)\n", threadIdx.x, byte, (124 + threadIdx.x) >> 3);
 
 	if(byte == 'C') hash += pow4[threadIdx.x];
 	if(byte == 'G') hash += pow4_G[threadIdx.x];
@@ -268,9 +283,6 @@ __global__ void kernel_register_fast_hash_rotational(uint64_t * hashes, uint64_t
 
 	hash = 0;
 	
-	
-	
-
 	// The 3 is because it is 0011 in binary so it only selects the destination and source thread with the mask
 	temp_value = __shfl_sync(0xFFFFFFFF, value, index);
 
@@ -380,7 +392,7 @@ __global__ void kernel_register_fast_hash_rotational(uint64_t * hashes, uint64_t
 		
 	}
 
-	if(threadIdx.x == 0 && blockIdx.x == 0) printf("POST at %"PRIu64" -> %.32s @ %"PRIu64"\n", threadIdx.x + (32) + 128 * blockIdx.x, &sequence[threadIdx.x + (32) + 128 * blockIdx.x], hashes[threadIdx.x + (32) + 128 * blockIdx.x]);
+	//if(threadIdx.x == 0 && blockIdx.x == 0) printf("POST at %"PRIu64" -> %.32s @ %"PRIu64"\n", threadIdx.x + (32) + 128 * blockIdx.x, &sequence[threadIdx.x + (32) + 128 * blockIdx.x], hashes[threadIdx.x + (32) + 128 * blockIdx.x]);
 	
 }
 

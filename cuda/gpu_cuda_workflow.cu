@@ -16,11 +16,11 @@ void print_header(FILE * out, uint64_t query_len, uint64_t ref_len);
 
 int main(int argc, char ** argv)
 {
-    uint64_t i, min_length = 64;
+    uint64_t i, min_length = 64, max_frequency = 0;
     int fast = 1; // fast is default
     unsigned selected_device = 0;
     FILE * query = NULL, * ref = NULL, * out = NULL;
-    init_args(argc, argv, &query, &selected_device, &ref, &out, &min_length, &fast);
+    init_args(argc, argv, &query, &selected_device, &ref, &out, &min_length, &fast, &max_frequency);
 
     ////////////////////////////////////////////////////////////////////////////////
     // Get info of devices
@@ -82,7 +82,7 @@ int main(int argc, char ** argv)
     if(fast == 1) 
         fprintf(stdout, "[INFO] Running on fast mode (some repetitive seeds will be skipped)\n");
     else
-        fprintf(stdout, "[INFO] Running on sensitive mode (ALL seeds are computed)\n");
+        fprintf(stdout, "[INFO] Running on sensitive mode (ALL seeds are computed [mf:%"PRIu64"])\n", max_frequency);
 
     
 
@@ -243,15 +243,32 @@ int main(int argc, char ** argv)
         // Run kmers
         ret = cudaMemset(keys, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
         ret = cudaMemset(values, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
+        
         //number_of_blocks = (((items_read_x - KMER_SIZE + 1)) / (threads_number*4));
         //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_query);
+        
         number_of_blocks = (items_read_x - KMER_SIZE + 1)/threads_number;
-        //printf("Going for blocks %"PRIu64" and items %"PRIu64" .wAtOnce: %"PRIu64"\n", number_of_blocks, items_read_x, words_at_once);
-
         kernel_index_global32<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_query);
         ret = cudaDeviceSynchronize();
         if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on query. Error: %d\n", ret); exit(-1); }
 
+        // FOR DEBUG
+        // Copy kmers to local
+        
+        /*
+        uint64_t * kmers = (uint64_t *) malloc(words_at_once * sizeof(uint64_t));
+        uint64_t * poses = (uint64_t *) malloc(words_at_once * sizeof(uint64_t));
+        ret = cudaMemcpy(kmers, keys, items_read_x*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+        ret = cudaMemcpy(poses, values, items_read_x*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+        FILE * anything8 = fopen("kmers", "a");
+        for(i=0; i<words_at_once; i++){
+            fprintf(anything8, "%"PRIu64" %"PRIu64" %"PRIu64"\n", i, poses[i], kmers[i]);
+        }
+        free(kmers); free(poses);
+        fclose(anything8);
+        */
+        
+        
 
         ////////////////////////////////////////////////////////////////////////////////
         // Sort the query kmers
@@ -280,7 +297,7 @@ int main(int argc, char ** argv)
         if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on query. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
         
 
-        // Download kmers        
+        // Download sorted kmers
         ret = cudaMemcpy(dict_x_keys, keys_buf, items_read_x*sizeof(uint64_t), cudaMemcpyDeviceToHost);
         if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (1). Error: %d\n", ret); exit(-1); }
         ret = cudaMemcpy(dict_x_values, values_buf, items_read_x*sizeof(uint64_t), cudaMemcpyDeviceToHost);
@@ -374,7 +391,7 @@ int main(int argc, char ** argv)
             
 
 
-            // Download kmers
+            // Download sorted reference kmers
             ret = cudaMemcpy(dict_y_keys, keys_buf, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (3). Error: %d\n", ret); exit(-1); }
             ret = cudaMemcpy(dict_y_values, values_buf, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
@@ -408,7 +425,7 @@ int main(int argc, char ** argv)
             if(fast == 1)
                 n_hits_found = generate_hits_fast(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             else
-                n_hits_found = generate_hits_sensitive(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
+                n_hits_found = generate_hits_sensitive(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency);
             
             fprintf(stdout, "[INFO] Generated %"PRIu64" hits on split %d -> (%d%%)\n", n_hits_found, split, (int)((100*MIN(pos_in_ref, ref_len))/ref_len));
 
@@ -641,7 +658,7 @@ int main(int argc, char ** argv)
             if(fast == 1)
                 n_hits_found = generate_hits_fast(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             else
-                n_hits_found = generate_hits_sensitive(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
+                n_hits_found = generate_hits_sensitive(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency);
             
             fprintf(stdout, "[INFO] Generated %"PRIu64" hits on reversed split %d -> (%d%%)\n", n_hits_found, split, (int)((100*MIN(pos_in_ref, ref_len))/ref_len));
 
