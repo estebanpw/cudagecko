@@ -12,11 +12,11 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 //uint64_t filter_hits(hit_advanced * hits_in, ulong kmer_size, ulong n_hits_found);
-void print_header(FILE * out, uint64_t query_len, uint64_t ref_len);
+void print_header(FILE * out, uint32_t query_len, uint32_t ref_len);
 
 int main(int argc, char ** argv)
 {
-    uint64_t i, min_length = 64, max_frequency = 0;
+    uint32_t i, min_length = 64, max_frequency = 0;
     int fast = 1; // fast is default
     unsigned selected_device = 0;
     FILE * query = NULL, * ref = NULL, * out = NULL;
@@ -28,7 +28,7 @@ int main(int argc, char ** argv)
 
     int ret_num_devices;
     //unsigned compute_units;
-    uint64_t local_device_RAM, global_device_RAM;
+    uint32_t local_device_RAM, global_device_RAM;
     int work_group_dimensions[3];
     //int work_group_size_local;
     int ret;
@@ -41,9 +41,9 @@ int main(int argc, char ** argv)
     for(i=0; i<ret_num_devices; i++){
         if( cudaSuccess != (ret = cudaGetDeviceProperties(&device, i))){ fprintf(stderr, "Failed to get cuda device property: %d\n", ret); exit(-1); }
 
-        fprintf(stdout, "\tDevice [%"PRIu64"]: %s\n", i, device.name);
+        fprintf(stdout, "\tDevice [%"PRIu32"]: %s\n", i, device.name);
         global_device_RAM = device.totalGlobalMem;
-        fprintf(stdout, "\t\tGlobal mem   : %"PRIu64" (%"PRIu64" MB)\n", (uint64_t) global_device_RAM, (uint64_t) global_device_RAM / (1024*1024));
+        fprintf(stdout, "\t\tGlobal mem   : %"PRIu32" (%"PRIu32" MB)\n", (uint32_t) global_device_RAM, (uint32_t) global_device_RAM / (1024*1024));
         local_device_RAM = device.sharedMemPerBlock;
         //fprintf(stdout, "\t\tLocal mem    : %"PRIu64" (%"PRIu64" KB)\n", (uint64_t) local_device_RAM, (uint64_t) local_device_RAM / (1024));
         //compute_units = device.multiProcessorCount;
@@ -69,20 +69,21 @@ int main(int argc, char ** argv)
 
     // Calculate how much ram we can use for every chunk
     // The maximum amount of RAM required simultaneously is words_at_once * 34
-    uint64_t effective_global_ram =  (global_device_RAM - 100*1024*1024); //Minus 100 MBs for other stuff
-    uint64_t factor = 34;
-    uint64_t ram_to_be_used = (effective_global_ram) / (factor); // update this with max usage
-    uint64_t words_at_once = ram_to_be_used;
+    uint32_t effective_global_ram =  (global_device_RAM - 100*1024*1024); //Minus 100 MBs for other stuff
+    uint32_t factor = 34;
+    uint32_t ram_to_be_used = (effective_global_ram) / (factor); // update this with max usage
+    uint32_t words_at_once = ram_to_be_used;
     if(fast == 0) words_at_once = words_at_once/6;
 
 
-    uint64_t * keys, * values, * keys_buf, * values_buf;
-    fprintf(stdout, "[INFO] I will use %"PRIu64" (%"PRIu64" MB) bytes for hash (you can have %"PRIu64" entries) and their buffers\n", words_at_once * factor, (words_at_once * factor)/(1024*1024), words_at_once);
-    fprintf(stdout, "[INFO] Filtering at a minimum length of %"PRIu64" bps\n", min_length);
+    uint64_t * keys, * keys_buf; 
+    uint32_t * values, * values_buf;
+    fprintf(stdout, "[INFO] I will use %"PRIu32" (%"PRIu32" MB) bytes for hash (you can have %"PRIu32" entries) and their buffers\n", words_at_once * factor, (words_at_once * factor)/(1024*1024), words_at_once);
+    fprintf(stdout, "[INFO] Filtering at a minimum length of %"PRIu32" bps\n", min_length);
     if(fast == 1) 
         fprintf(stdout, "[INFO] Running on fast mode (some repetitive seeds will be skipped)\n");
     else
-        fprintf(stdout, "[INFO] Running on sensitive mode (ALL seeds are computed [mf:%"PRIu64"])\n", max_frequency);
+        fprintf(stdout, "[INFO] Running on sensitive mode (ALL seeds are computed [mf:%"PRIu32"])\n", max_frequency);
 
     
 
@@ -101,10 +102,10 @@ int main(int argc, char ** argv)
     else { fprintf(stdout, "[INFO] Shared memory configuration is: %s\n", (shared_mem_conf == cudaSharedMemBankSizeFourByte) ? ("4 bytes") : ("8 bytes")); }
 
     // Load DNA sequences
-    uint64_t query_len = get_seq_len(query);
-    uint64_t ref_len = get_seq_len(ref);
+    uint32_t query_len = get_seq_len(query);
+    uint32_t ref_len = get_seq_len(ref);
 
-    fprintf(stdout, "[INFO] Qlen: %"PRIu64"; Rlen: %"PRIu64"\n", query_len, ref_len);
+    fprintf(stdout, "[INFO] Qlen: %"PRIu32"; Rlen: %"PRIu32"\n", query_len, ref_len);
 
     // Check that sequence length complies
     if(MAX(query_len, ref_len) >= 2147483648){
@@ -120,6 +121,8 @@ int main(int argc, char ** argv)
     char * query_seq_host = (char *) malloc(query_len * sizeof(char));
     char * ref_seq_host = (char *) malloc(ref_len * sizeof(char));
     char * ref_rev_seq_host = (char *) malloc(ref_len * sizeof(char));
+
+    //cudaHostAlloc((void**)&a,n*sizeof(a),cudaHostAllocDefault);
 
     if(query_seq_host == NULL || ref_seq_host == NULL || ref_rev_seq_host == NULL) terror("Could not allocate memory for sequences in host");
 
@@ -137,8 +140,10 @@ int main(int argc, char ** argv)
     fprintf(stdout, "[INFO] Reversing reference\n");
 
     
-    ret = cudaMalloc(&seq_dev_mem_aux, ref_len * sizeof(char)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for reference sequence in device (Attempted %"PRIu64" bytes) at reversing. Error: %d\n", ref_len * sizeof(char), ret); exit(-1); }
-    ret = cudaMalloc(&seq_dev_mem_reverse_aux, ref_len * sizeof(char)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for reverse reference sequence in device (Attempted %"PRIu64" bytes) at reversing. Error: %d\n", ref_len * sizeof(char), ret); exit(-1); }
+    ret = cudaMalloc(&seq_dev_mem_aux, ref_len * sizeof(char)); 
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for reference sequence in device (Attempted %"PRIu32" bytes) at reversing. Error: %d\n", (uint32_t) (ref_len * sizeof(char)), ret); exit(-1); }
+    ret = cudaMalloc(&seq_dev_mem_reverse_aux, ref_len * sizeof(char)); 
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for reverse reference sequence in device (Attempted %"PRIu32" bytes) at reversing. Error: %d\n", (uint32_t) (ref_len * sizeof(char)), ret); exit(-1); }
 
     ret = cudaMemcpy(seq_dev_mem_aux, ref_seq_host, ref_len, cudaMemcpyHostToDevice);
     if(ret != cudaSuccess){ fprintf(stderr, "Could not copy reference sequence to device for reversing. Error: %d\n", ret); exit(-1); }
@@ -175,26 +180,28 @@ int main(int argc, char ** argv)
 
 
     // Allocate memory in host to download kmers and store hits
-    uint64_t * dict_x_keys, * dict_x_values, * dict_y_keys, * dict_y_values;
+    uint64_t * dict_x_keys, * dict_y_keys; // Keys are hashes (64-b), values are positions (32)
+    uint32_t * dict_x_values, * dict_y_values;
+
     dict_x_keys = (uint64_t *) malloc(words_at_once*sizeof(uint64_t));
-    dict_x_values = (uint64_t *) malloc(words_at_once*sizeof(uint64_t));
+    dict_x_values = (uint32_t *) malloc(words_at_once*sizeof(uint32_t));
     if(dict_x_keys == NULL || dict_x_values == NULL) { fprintf(stderr, "Allocating for kmer download in query. Error: %d\n", ret); exit(-1); }
     dict_y_keys = (uint64_t *) malloc(words_at_once*sizeof(uint64_t));
-    dict_y_values = (uint64_t *) malloc(words_at_once*sizeof(uint64_t));
+    dict_y_values = (uint32_t *) malloc(words_at_once*sizeof(uint32_t));
     if(dict_y_keys == NULL || dict_y_values == NULL) { fprintf(stderr, "Allocating for kmer download in ref. Error: %d\n", ret); exit(-1); }
     Hit * hits = (Hit *) malloc(words_at_once*sizeof(Hit));
-    uint64_t * filtered_hits_x = (uint64_t *) malloc(words_at_once*sizeof(uint64_t));
-    uint64_t * filtered_hits_y = (uint64_t *) malloc(words_at_once*sizeof(uint64_t));
-    uint64_t * device_filt_hits_x, * device_filt_hits_y, * left_offset, * right_offset;
-    uint64_t * host_left_offset = (uint64_t *) malloc(words_at_once*sizeof(uint64_t));
-    uint64_t * host_right_offset = (uint64_t *) malloc(words_at_once*sizeof(uint64_t));
+    uint32_t * filtered_hits_x = (uint32_t *) malloc(words_at_once*sizeof(uint32_t));
+    uint32_t * filtered_hits_y = (uint32_t *) malloc(words_at_once*sizeof(uint32_t));
+    uint32_t * device_filt_hits_x, * device_filt_hits_y, * left_offset, * right_offset;
+    uint32_t * host_left_offset = (uint32_t *) malloc(words_at_once*sizeof(uint32_t));
+    uint32_t * host_right_offset = (uint32_t *) malloc(words_at_once*sizeof(uint32_t));
     if(host_left_offset == NULL || host_right_offset == NULL) terror("Could not allocate host offsets");
     if(hits == NULL || filtered_hits_x == NULL || filtered_hits_y == NULL) terror("Could not allocate hits");
     uint64_t * diagonals = (uint64_t *) malloc(words_at_once*sizeof(uint64_t));
     uint64_t * device_diagonals, * device_diagonals_buf;
-    uint64_t * device_hits, * device_hits_buf; // These will actually be just indices to redirect the hits sorting
-    uint64_t * ascending_numbers = (uint64_t *) malloc(words_at_once*sizeof(uint64_t)); for(i=0; i<words_at_once; i++) ascending_numbers[i] = i;
-    uint64_t * indexing_numbers = (uint64_t *) malloc(words_at_once*sizeof(uint64_t));
+    uint32_t * device_hits, * device_hits_buf; // These will actually be just indices to redirect the hits sorting
+    uint32_t * ascending_numbers = (uint32_t *) malloc(words_at_once*sizeof(uint32_t)); for(i=0; i<words_at_once; i++) ascending_numbers[i] = i;
+    uint32_t * indexing_numbers = (uint32_t *) malloc(words_at_once*sizeof(uint32_t));
     if(hits == NULL) { fprintf(stderr, "Allocating for hits download. Error: %d\n", ret); exit(-1); }
 
 
@@ -206,30 +213,30 @@ int main(int argc, char ** argv)
     
 
     int split = 0;
-    uint64_t pos_in_query = 0, pos_in_ref = 0;
+    uint32_t pos_in_query = 0, pos_in_ref = 0;
     while(pos_in_query < query_len){
 
 
         // Allocate memory in device for sequence chunk
         // We have to this here since later on we will have to free all memory to load the hits
         ret = cudaMalloc(&seq_dev_mem, words_at_once * sizeof(char));
-        if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for query sequence in device (Attempted %"PRIu64" bytes). Error: %d\n", words_at_once * sizeof(char), ret); exit(-1); }
+        if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for query sequence in device (Attempted %"PRIu32" bytes). Error: %d\n", (uint32_t) (words_at_once * sizeof(char)), ret); exit(-1); }
 
 
 
         // Allocate words table
         ret = cudaMalloc(&keys, words_at_once * sizeof(uint64_t));
         if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (1). Error: %d\n", ret); exit(-1); }
-        ret = cudaMalloc(&values, words_at_once * sizeof(uint64_t));
+        ret = cudaMalloc(&values, words_at_once * sizeof(uint32_t));
         if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (2). Error: %d\n", ret); exit(-1); }
         ret = cudaMalloc(&keys_buf, words_at_once * sizeof(uint64_t));
         if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (3). Error: %d\n", ret); exit(-1); }
-        ret = cudaMalloc(&values_buf, words_at_once * sizeof(uint64_t));
+        ret = cudaMalloc(&values_buf, words_at_once * sizeof(uint32_t));
         if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (4). Error: %d\n", ret); exit(-1); }
 
         fprintf(stdout, "[EXECUTING] Running split %d -> (%d%%)\n", split, (int)((100*pos_in_query)/query_len));
 
-        uint64_t items_read_x = MIN(query_len - pos_in_query, words_at_once);
+        uint32_t items_read_x = MIN(query_len - pos_in_query, words_at_once);
 
 
         ////////////////////////////////////////////////////////////////////////////////
@@ -242,7 +249,7 @@ int main(int argc, char ** argv)
 
         // Run kmers
         ret = cudaMemset(keys, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
-        ret = cudaMemset(values, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
+        ret = cudaMemset(values, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
         
         //number_of_blocks = (((items_read_x - KMER_SIZE + 1)) / (threads_number*4));
         //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_query);
@@ -275,7 +282,7 @@ int main(int argc, char ** argv)
         ////////////////////////////////////////////////////////////////////////////////
 
         cub::DoubleBuffer<uint64_t> d_keys(keys, keys_buf);
-        cub::DoubleBuffer<uint64_t> d_values(values, values_buf);
+        cub::DoubleBuffer<uint32_t> d_values(values, values_buf);
 
         void * d_temp_storage = NULL;
         size_t temp_storage_bytes = 0;
@@ -300,7 +307,7 @@ int main(int argc, char ** argv)
         // Download sorted kmers
         ret = cudaMemcpy(dict_x_keys, keys_buf, items_read_x*sizeof(uint64_t), cudaMemcpyDeviceToHost);
         if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (1). Error: %d\n", ret); exit(-1); }
-        ret = cudaMemcpy(dict_x_values, values_buf, items_read_x*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+        ret = cudaMemcpy(dict_x_values, values_buf, items_read_x*sizeof(uint32_t), cudaMemcpyDeviceToHost);
         if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (2). Error: %d\n", ret); exit(-1); }
 
         // Print hits for debug
@@ -329,18 +336,18 @@ int main(int argc, char ** argv)
             // FORWARD strand in the reference
             ////////////////////////////////////////////////////////////////////////////////
 
-            uint64_t items_read_y = MIN(ref_len - pos_in_ref, words_at_once);
+            uint32_t items_read_y = MIN(ref_len - pos_in_ref, words_at_once);
 
             ret = cudaMalloc(&seq_dev_mem, words_at_once * sizeof(char));
 
             // Allocate words table
             ret = cudaMalloc(&keys, words_at_once * sizeof(uint64_t));
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (1). Error: %d\n", ret); exit(-1); }
-            ret = cudaMalloc(&values, words_at_once * sizeof(uint64_t));
+            ret = cudaMalloc(&values, words_at_once * sizeof(uint32_t));
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (2). Error: %d\n", ret); exit(-1); }
             ret = cudaMalloc(&keys_buf, words_at_once * sizeof(uint64_t));
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (3). Error: %d\n", ret); exit(-1); }
-            ret = cudaMalloc(&values_buf, words_at_once * sizeof(uint64_t));
+            ret = cudaMalloc(&values_buf, words_at_once * sizeof(uint32_t));
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (4). Error: %d\n", ret); exit(-1); }
 
             // Load sequence chunk into ram
@@ -349,7 +356,7 @@ int main(int argc, char ** argv)
 
             // Run kmers
             ret = cudaMemset(keys, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
-            ret = cudaMemset(values, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
+            ret = cudaMemset(values, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
             //number_of_blocks = (((items_read_y - KMER_SIZE + 1)) / (threads_number*4)); 
             //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
             number_of_blocks = ((items_read_y - KMER_SIZE + 1))/threads_number;
@@ -369,10 +376,10 @@ int main(int argc, char ** argv)
             ////////////////////////////////////////////////////////////////////////////////
 
             ret = cudaMemset(keys_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
-            ret = cudaMemset(values_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
+            ret = cudaMemset(values_buf, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
 
             cub::DoubleBuffer<uint64_t> d_keys_ref(keys, keys_buf);
-            cub::DoubleBuffer<uint64_t> d_values_ref(values, values_buf);
+            cub::DoubleBuffer<uint32_t> d_values_ref(values, values_buf);
 
             d_temp_storage = NULL;
             temp_storage_bytes = 0;
@@ -394,7 +401,7 @@ int main(int argc, char ** argv)
             // Download sorted reference kmers
             ret = cudaMemcpy(dict_y_keys, keys_buf, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (3). Error: %d\n", ret); exit(-1); }
-            ret = cudaMemcpy(dict_y_values, values_buf, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            ret = cudaMemcpy(dict_y_values, values_buf, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (4). Error: %d\n", ret); exit(-1); }
 
             ret = cudaFree(d_temp_storage);
@@ -421,13 +428,13 @@ int main(int argc, char ** argv)
             cudaFree(keys_buf);
             cudaFree(values_buf);
 
-            uint64_t n_hits_found;
+            uint32_t n_hits_found;
             if(fast == 1)
                 n_hits_found = generate_hits_fast(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             else
                 n_hits_found = generate_hits_sensitive(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency);
             
-            fprintf(stdout, "[INFO] Generated %"PRIu64" hits on split %d -> (%d%%)\n", n_hits_found, split, (int)((100*MIN(pos_in_ref, ref_len))/ref_len));
+            fprintf(stdout, "[INFO] Generated %"PRIu32" hits on split %d -> (%d%%)\n", n_hits_found, split, (int)((100*MIN(pos_in_ref, ref_len))/ref_len));
 
             // Print hits for debug
             //for(i=0; i<items_read_y; i++){
@@ -447,20 +454,20 @@ int main(int argc, char ** argv)
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for hits in device (1). Error: %d\n", ret); exit(-1); }
             ret = cudaMalloc(&device_diagonals_buf, words_at_once * sizeof(uint64_t));
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for hits in device (2). Error: %d\n", ret); exit(-1); }
-            ret = cudaMalloc(&device_hits, words_at_once * sizeof(uint64_t));
+            ret = cudaMalloc(&device_hits, words_at_once * sizeof(uint32_t));
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for hits in device (3). Error: %d\n", ret); exit(-1); }
-            ret = cudaMalloc(&device_hits_buf, words_at_once * sizeof(uint64_t));
+            ret = cudaMalloc(&device_hits_buf, words_at_once * sizeof(uint32_t));
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for hits in device (4). Error: %d\n", ret); exit(-1); }
 
             // We will actually sort the diagonals with associated values 0,1,2... to n and use these to index the hits array
-            ret = cudaMemcpy(device_hits, ascending_numbers, n_hits_found*sizeof(uint64_t), cudaMemcpyHostToDevice);
+            ret = cudaMemcpy(device_hits, ascending_numbers, n_hits_found*sizeof(uint32_t), cudaMemcpyHostToDevice);
             if(ret != cudaSuccess){ fprintf(stderr, "Uploading forward device hits. Error: %d\n", ret); exit(-1); }
 
             ret = cudaMemcpy(device_diagonals, diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyHostToDevice);
             if(ret != cudaSuccess){ fprintf(stderr, "Uploading device diagonals. Error: %d\n", ret); exit(-1); }
 
             cub::DoubleBuffer<uint64_t> d_diagonals(device_diagonals, device_diagonals_buf);
-            cub::DoubleBuffer<uint64_t> d_hits(device_hits, device_hits_buf);
+            cub::DoubleBuffer<uint32_t> d_hits(device_hits, device_hits_buf);
             d_temp_storage = NULL;
             temp_storage_bytes = 0;
             cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_diagonals, d_hits, n_hits_found);
@@ -476,16 +483,16 @@ int main(int argc, char ** argv)
             if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
             // Download hits (actually just number indices)
-            ret = cudaMemcpy(indexing_numbers, device_hits_buf, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            ret = cudaMemcpy(indexing_numbers, device_hits_buf, n_hits_found*sizeof(uint32_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device hits. Error: %d\n", ret); exit(-1); }
 
             ret = cudaMemcpy(diagonals, device_diagonals_buf, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
 
 
-            uint64_t n_hits_kept = filter_hits_forward(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
+            uint32_t n_hits_kept = filter_hits_forward(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
 
-            fprintf(stdout, "[INFO] Remaining hits %"PRIu64"\n", n_hits_kept);
+            fprintf(stdout, "[INFO] Remaining hits %"PRIu32"\n", n_hits_kept);
 
             //for(i=0; i<n_hits_kept; i++){
                 //printf("%"PRIu64"\n", diagonals[i]);
@@ -506,18 +513,18 @@ int main(int argc, char ** argv)
             ret = cudaMalloc(&seq_dev_mem, words_at_once * sizeof(char)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for query sequence in device. Error: %d\n", ret); exit(-1); }
             ret = cudaMalloc(&seq_dev_mem_aux, words_at_once * sizeof(char)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for ref sequence in device. Error: %d\n", ret); exit(-1); }
 
-            ret = cudaMalloc(&device_filt_hits_x, words_at_once * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device filtered hits query. Error: %d\n", ret); exit(-1); }
-            ret = cudaMalloc(&device_filt_hits_y, words_at_once * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device filtered hits ref. Error: %d\n", ret); exit(-1); }
-            ret = cudaMalloc(&left_offset, words_at_once * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device offset left frags query. Error: %d\n", ret); exit(-1); }
-            ret = cudaMalloc(&right_offset, words_at_once * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device offset right frags query. Error: %d\n", ret); exit(-1); }
+            ret = cudaMalloc(&device_filt_hits_x, words_at_once * sizeof(uint32_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device filtered hits query. Error: %d\n", ret); exit(-1); }
+            ret = cudaMalloc(&device_filt_hits_y, words_at_once * sizeof(uint32_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device filtered hits ref. Error: %d\n", ret); exit(-1); }
+            ret = cudaMalloc(&left_offset, words_at_once * sizeof(uint32_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device offset left frags query. Error: %d\n", ret); exit(-1); }
+            ret = cudaMalloc(&right_offset, words_at_once * sizeof(uint32_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device offset right frags query. Error: %d\n", ret); exit(-1); }
 
             ret = cudaMemcpy(seq_dev_mem, &query_seq_host[pos_in_query-words_at_once], MIN(query_len - (pos_in_query - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy query sequence to device for frags. Error: %d\n", ret); exit(-1); }
             ret = cudaMemcpy(seq_dev_mem_aux, &ref_seq_host[pos_in_ref-words_at_once], MIN(ref_len - (pos_in_ref - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device for frags. Error: %d\n", ret); exit(-1); }
             
-            ret = cudaMemcpy(device_filt_hits_x, filtered_hits_x, n_hits_kept * sizeof(uint64_t), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy filtered hits x in device. Error: %d\n", ret); exit(-1); }
-            ret = cudaMemcpy(device_filt_hits_y, filtered_hits_y, n_hits_kept * sizeof(uint64_t), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy filtered hits y in device. Error: %d\n", ret); exit(-1); }
-            ret = cudaMemset(left_offset, 0x0, n_hits_kept * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy left offset in device. Error: %d\n", ret); exit(-1); }
-            ret = cudaMemset(right_offset, 0x0, n_hits_kept * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy right offset in device. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(device_filt_hits_x, filtered_hits_x, n_hits_kept * sizeof(uint32_t), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy filtered hits x in device. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(device_filt_hits_y, filtered_hits_y, n_hits_kept * sizeof(uint32_t), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy filtered hits y in device. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemset(left_offset, 0x0, n_hits_kept * sizeof(uint32_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy left offset in device. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemset(right_offset, 0x0, n_hits_kept * sizeof(uint32_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy right offset in device. Error: %d\n", ret); exit(-1); }
 
 
             //
@@ -532,8 +539,8 @@ int main(int argc, char ** argv)
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Failed on generating forward frags. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
-            ret = cudaMemcpy(host_left_offset, left_offset, n_hits_kept * sizeof(uint64_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back left offset. Error: %d\n", ret); exit(-1); }
-            ret = cudaMemcpy(host_right_offset, right_offset, n_hits_kept * sizeof(uint64_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back right offset. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(host_left_offset, left_offset, n_hits_kept * sizeof(uint32_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back left offset. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(host_right_offset, right_offset, n_hits_kept * sizeof(uint32_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back right offset. Error: %d\n", ret); exit(-1); }
 
             /*
             char name[100] = "\0";
@@ -581,18 +588,18 @@ int main(int argc, char ** argv)
             // FORWARD strand in the reference BUT REVERSED !
             ////////////////////////////////////////////////////////////////////////////////
 
-            uint64_t items_read_y = MIN(ref_len - pos_in_ref, words_at_once);
+            uint32_t items_read_y = MIN(ref_len - pos_in_ref, words_at_once);
 
             ret = cudaMalloc(&seq_dev_mem, words_at_once * sizeof(char));
 
             // Allocate words table
             ret = cudaMalloc(&keys, words_at_once * sizeof(uint64_t));
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (1). Error: %d\n", ret); exit(-1); }
-            ret = cudaMalloc(&values, words_at_once * sizeof(uint64_t));
+            ret = cudaMalloc(&values, words_at_once * sizeof(uint32_t));
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (2). Error: %d\n", ret); exit(-1); }
             ret = cudaMalloc(&keys_buf, words_at_once * sizeof(uint64_t));
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (3). Error: %d\n", ret); exit(-1); }
-            ret = cudaMalloc(&values_buf, words_at_once * sizeof(uint64_t));
+            ret = cudaMalloc(&values_buf, words_at_once * sizeof(uint32_t));
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (4). Error: %d\n", ret); exit(-1); }
 
             // Load sequence chunk into ram
@@ -601,7 +608,7 @@ int main(int argc, char ** argv)
 
             // Run kmers
             ret = cudaMemset(keys, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
-            ret = cudaMemset(values, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
+            ret = cudaMemset(values, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
             //number_of_blocks = (((items_read_y - KMER_SIZE + 1)) / (threads_number*4)); 
             //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
             number_of_blocks = ((items_read_y - KMER_SIZE + 1))/threads_number;
@@ -614,9 +621,9 @@ int main(int argc, char ** argv)
             ////////////////////////////////////////////////////////////////////////////////
 
             ret = cudaMemset(keys_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
-            ret = cudaMemset(values_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
+            ret = cudaMemset(values_buf, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
             cub::DoubleBuffer<uint64_t> d_keys_ref(keys, keys_buf);
-            cub::DoubleBuffer<uint64_t> d_values_ref(values, values_buf);
+            cub::DoubleBuffer<uint32_t> d_values_ref(values, values_buf);
             d_temp_storage = NULL;
             temp_storage_bytes = 0;
             cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
@@ -636,7 +643,7 @@ int main(int argc, char ** argv)
             // Download kmers
             ret = cudaMemcpy(dict_y_keys, keys_buf, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (3). Error: %d\n", ret); exit(-1); }
-            ret = cudaMemcpy(dict_y_values, values_buf, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            ret = cudaMemcpy(dict_y_values, values_buf, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (4). Error: %d\n", ret); exit(-1); }
 
             ret = cudaFree(d_temp_storage);
@@ -654,13 +661,13 @@ int main(int argc, char ** argv)
             cudaFree(keys_buf);
             cudaFree(values_buf);
 
-            uint64_t n_hits_found;
+            uint32_t n_hits_found;
             if(fast == 1)
                 n_hits_found = generate_hits_fast(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             else
                 n_hits_found = generate_hits_sensitive(words_at_once, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency);
             
-            fprintf(stdout, "[INFO] Generated %"PRIu64" hits on reversed split %d -> (%d%%)\n", n_hits_found, split, (int)((100*MIN(pos_in_ref, ref_len))/ref_len));
+            fprintf(stdout, "[INFO] Generated %"PRIu32" hits on reversed split %d -> (%d%%)\n", n_hits_found, split, (int)((100*MIN(pos_in_ref, ref_len))/ref_len));
 
             ////////////////////////////////////////////////////////////////////////////////
             // Sort hits for the current split BUT REVERSED !
@@ -670,20 +677,20 @@ int main(int argc, char ** argv)
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for hits in device (1). Error: %d\n", ret); exit(-1); }
             ret = cudaMalloc(&device_diagonals_buf, words_at_once * sizeof(uint64_t));
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for hits in device (2). Error: %d\n", ret); exit(-1); }
-            ret = cudaMalloc(&device_hits, words_at_once * sizeof(uint64_t));
+            ret = cudaMalloc(&device_hits, words_at_once * sizeof(uint32_t));
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for hits in device (3). Error: %d\n", ret); exit(-1); }
-            ret = cudaMalloc(&device_hits_buf, words_at_once * sizeof(uint64_t));
+            ret = cudaMalloc(&device_hits_buf, words_at_once * sizeof(uint32_t));
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for hits in device (4). Error: %d\n", ret); exit(-1); }
 
             // We will actually sort the diagonals with associated values 0,1,2... to n and use these to index the hits array
-            ret = cudaMemcpy(device_hits, ascending_numbers, n_hits_found*sizeof(uint64_t), cudaMemcpyHostToDevice);
+            ret = cudaMemcpy(device_hits, ascending_numbers, n_hits_found*sizeof(uint32_t), cudaMemcpyHostToDevice);
             if(ret != cudaSuccess){ fprintf(stderr, "Uploading device reverse hits. Error: %d\n", ret); exit(-1); }
 
             ret = cudaMemcpy(device_diagonals, diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyHostToDevice);
             if(ret != cudaSuccess){ fprintf(stderr, "Uploading device diagonals. Error: %d\n", ret); exit(-1); }
 
             cub::DoubleBuffer<uint64_t> d_diagonals(device_diagonals, device_diagonals_buf);
-            cub::DoubleBuffer<uint64_t> d_hits(device_hits, device_hits_buf);
+            cub::DoubleBuffer<uint32_t> d_hits(device_hits, device_hits_buf);
             d_temp_storage = NULL;
             temp_storage_bytes = 0;
             cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_diagonals, d_hits, n_hits_found);
@@ -699,16 +706,16 @@ int main(int argc, char ** argv)
             if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
             // Download hits (actually just number indices)
-            ret = cudaMemcpy(indexing_numbers, device_hits_buf, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            ret = cudaMemcpy(indexing_numbers, device_hits_buf, n_hits_found*sizeof(uint32_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device hits. Error: %d\n", ret); exit(-1); }
 
             ret = cudaMemcpy(diagonals, device_diagonals_buf, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
 
 
-            uint64_t n_hits_kept = filter_hits_reverse(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
+            uint32_t n_hits_kept = filter_hits_reverse(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
 
-            fprintf(stdout, "[INFO] Remaining hits %"PRIu64"\n", n_hits_kept);
+            fprintf(stdout, "[INFO] Remaining hits %"PRIu32"\n", n_hits_kept);
 
             
 
@@ -745,18 +752,18 @@ int main(int argc, char ** argv)
             ret = cudaMalloc(&seq_dev_mem, words_at_once * sizeof(char)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for query sequence in device. Error: %d\n", ret); exit(-1); }
             ret = cudaMalloc(&seq_dev_mem_aux, words_at_once * sizeof(char)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for ref sequence in device. Error: %d\n", ret); exit(-1); }
 
-            ret = cudaMalloc(&device_filt_hits_x, words_at_once * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device filtered hits query. Error: %d\n", ret); exit(-1); }
-            ret = cudaMalloc(&device_filt_hits_y, words_at_once * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device filtered hits ref. Error: %d\n", ret); exit(-1); }
-            ret = cudaMalloc(&left_offset, words_at_once * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device offset left frags query. Error: %d\n", ret); exit(-1); }
-            ret = cudaMalloc(&right_offset, words_at_once * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device offset right frags query. Error: %d\n", ret); exit(-1); }
+            ret = cudaMalloc(&device_filt_hits_x, words_at_once * sizeof(uint32_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device filtered hits query. Error: %d\n", ret); exit(-1); }
+            ret = cudaMalloc(&device_filt_hits_y, words_at_once * sizeof(uint32_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device filtered hits ref. Error: %d\n", ret); exit(-1); }
+            ret = cudaMalloc(&left_offset, words_at_once * sizeof(uint32_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device offset left frags query. Error: %d\n", ret); exit(-1); }
+            ret = cudaMalloc(&right_offset, words_at_once * sizeof(uint32_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate for device offset right frags query. Error: %d\n", ret); exit(-1); }
 
             ret = cudaMemcpy(seq_dev_mem, &query_seq_host[pos_in_query-words_at_once], MIN(query_len - (pos_in_query - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy query sequence to device for frags. Error: %d\n", ret); exit(-1); }
             ret = cudaMemcpy(seq_dev_mem_aux, &ref_rev_seq_host[pos_in_ref-words_at_once], MIN(ref_len - (pos_in_ref - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device for frags. Error: %d\n", ret); exit(-1); }
             
-            ret = cudaMemcpy(device_filt_hits_x, filtered_hits_x, n_hits_kept * sizeof(uint64_t), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy filtered hits x in device. Error: %d\n", ret); exit(-1); }
-            ret = cudaMemcpy(device_filt_hits_y, filtered_hits_y, n_hits_kept * sizeof(uint64_t), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy filtered hits y in device. Error: %d\n", ret); exit(-1); }
-            ret = cudaMemset(left_offset, 0x0, n_hits_kept * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy left offset in device. Error: %d\n", ret); exit(-1); }
-            ret = cudaMemset(right_offset, 0x0, n_hits_kept * sizeof(uint64_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy right offset in device. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(device_filt_hits_x, filtered_hits_x, n_hits_kept * sizeof(uint32_t), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy filtered hits x in device. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(device_filt_hits_y, filtered_hits_y, n_hits_kept * sizeof(uint32_t), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy filtered hits y in device. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemset(left_offset, 0x0, n_hits_kept * sizeof(uint32_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy left offset in device. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemset(right_offset, 0x0, n_hits_kept * sizeof(uint32_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy right offset in device. Error: %d\n", ret); exit(-1); }
 
             //
             //for(i=n_hits_kept-1; i>1; i--){
@@ -770,8 +777,8 @@ int main(int argc, char ** argv)
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Failed on generating forward frags. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
-            ret = cudaMemcpy(host_left_offset, left_offset, n_hits_kept * sizeof(uint64_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back left offset. Error: %d\n", ret); exit(-1); }
-            ret = cudaMemcpy(host_right_offset, right_offset, n_hits_kept * sizeof(uint64_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back right offset. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(host_left_offset, left_offset, n_hits_kept * sizeof(uint32_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back left offset. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(host_right_offset, right_offset, n_hits_kept * sizeof(uint32_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back right offset. Error: %d\n", ret); exit(-1); }
 
             
 
@@ -832,7 +839,7 @@ int main(int argc, char ** argv)
     return 0;
 }
 
-void print_header(FILE * out, uint64_t query_len, uint64_t ref_len){
+void print_header(FILE * out, uint32_t query_len, uint32_t ref_len){
 
     fprintf(out, "All by-Identity Ungapped Fragments (Hits based approach)\n");
     fprintf(out, "[Abr.98/Apr.2010/Dec.2011 -- <ortrelles@uma.es>\n");
@@ -840,8 +847,8 @@ void print_header(FILE * out, uint64_t query_len, uint64_t ref_len){
     fprintf(out, "SeqY filename : undef\n");
     fprintf(out, "SeqX name : undef\n");
     fprintf(out, "SeqY name : undef\n");
-    fprintf(out, "SeqX length : %"PRIu64"\n", query_len);
-    fprintf(out, "SeqY length : %"PRIu64"\n", ref_len);
+    fprintf(out, "SeqX length : %"PRIu32"\n", query_len);
+    fprintf(out, "SeqY length : %"PRIu32"\n", ref_len);
     fprintf(out, "Min.fragment.length : undef\n");
     fprintf(out, "Min.Identity : undef\n");
     fprintf(out, "Tot Hits (seeds) : undef\n");

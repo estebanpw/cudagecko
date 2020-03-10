@@ -5,8 +5,8 @@ void terror(const char * s) {
     exit(-1);
 }
 
-void build_frag(uint64_t * xStart, uint64_t * xEnd, uint64_t * yStart, uint64_t * yEnd, uint64_t * curr_l, char strand,
-    uint64_t * filtered_hits_x, uint64_t * filtered_hits_y, uint64_t * host_left_offset, uint64_t * host_right_offset, uint64_t id){
+void build_frag(uint32_t * xStart, uint32_t * xEnd, uint32_t * yStart, uint32_t * yEnd, uint32_t * curr_l, char strand,
+    uint32_t * filtered_hits_x, uint32_t * filtered_hits_y, uint32_t * host_left_offset, uint32_t * host_right_offset, uint32_t id){
     if(strand == 'f'){
         *xStart = filtered_hits_x[id] - host_left_offset[id];
         *xEnd = filtered_hits_x[id] + host_right_offset[id];
@@ -21,21 +21,22 @@ void build_frag(uint64_t * xStart, uint64_t * xEnd, uint64_t * yStart, uint64_t 
     *curr_l = *xEnd - *xStart;
 }
 
-void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits_y, uint64_t * host_left_offset, uint64_t * host_right_offset, uint64_t n_frags, FILE * out, char strand, uint64_t ref_len, uint64_t min_length){
+void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits_y, uint32_t * host_left_offset, 
+    uint32_t * host_right_offset, uint32_t n_frags, FILE * out, char strand, uint32_t ref_len, uint32_t min_length){
 
     
-    uint64_t current = 0;
+    uint32_t current = 0;
 
-    uint64_t xStart, xEnd, yStart, yEnd, curr_l;
+    uint32_t xStart, xEnd, yStart, yEnd, curr_l;
 
     build_frag(&xStart, &xEnd, &yStart, &yEnd, &curr_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, current);
 
     //fprintf(stdout, "I am [%"PRIu64"]: Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64", his hit [%"PRIu64", %"PRIu64"]\n", current, xStart, yStart, xEnd, yEnd, strand, curr_l, filtered_hits_x[current], filtered_hits_y[current]);
 
-    uint64_t next_xStart, next_yStart, next_xEnd, next_yEnd, next_l;
+    uint32_t next_xStart, next_yStart, next_xEnd, next_yEnd, next_l;
 
-    uint64_t max_id = 0;
-    uint64_t written_frags = 0;
+    uint32_t max_id = 0;
+    uint32_t written_frags = 0;
 
     while(current + 1 < n_frags){
 
@@ -71,15 +72,15 @@ void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits
 
                 //fprintf(stdout, "Not overlapping or different diag now so lets go save [%"PRIu64"]\n", max_id);
 
-                uint64_t best_xStart, best_xEnd, best_yStart, best_yEnd, best_l;
+                uint32_t best_xStart, best_xEnd, best_yStart, best_yEnd, best_l;
 
                 build_frag(&best_xStart, &best_xEnd, &best_yStart, &best_yEnd, &best_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, max_id);
 
                 if((best_xEnd - best_xStart) >= min_length){
                     
                     // Type,xStart,yStart,xEnd,yEnd,strand(f/r),block,length,score,ident,similarity,%%ident,SeqX,SeqY
-                    uint64_t score = (uint64_t)(best_l * MIN_P_IDENT);
-                    fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64",%"PRIu64",%"PRIu64",80.01,80.01,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l, score, score);
+                    uint32_t score = (uint32_t)(best_l * MIN_P_IDENT);
+                    fprintf(out, "Frag,%"PRIu32",%"PRIu32",%"PRIu32",%"PRIu32",%c,0,%"PRIu32",%"PRIu32",%"PRIu32",80.01,80.01,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l, score, score);
                     ++written_frags;
                 }
                 max_id = current+1;
@@ -113,7 +114,7 @@ void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits
 
                 //fprintf(stdout, "Not overlapping or different diag now so lets go save [%"PRIu64"]\n", max_id);
 
-                uint64_t best_xStart, best_xEnd, best_yStart, best_yEnd, best_l;
+                uint32_t best_xStart, best_xEnd, best_yStart, best_yEnd, best_l;
 
                 build_frag(&best_xStart, &best_xEnd, &best_yStart, &best_yEnd, &best_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, max_id);
 
@@ -121,8 +122,8 @@ void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits
                     //int64_t d = best_xStart + best_yStart;
                     best_yStart = ref_len - best_yStart - 1;
                     best_yEnd = ref_len - best_yEnd - 1;
-                    uint64_t score = (uint64_t)(best_l * MIN_P_IDENT);
-                    fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64",%"PRIu64",%"PRIu64",80.01,80.01,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l, score, score);
+                    uint32_t score = (uint32_t)(best_l * MIN_P_IDENT);
+                    fprintf(out, "Frag,%"PRIu32",%"PRIu32",%"PRIu32",%"PRIu32",%c,0,%"PRIu32",%"PRIu32",%"PRIu32",80.01,80.01,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l, score, score);
                     ++written_frags;
                     
                 }
@@ -135,13 +136,13 @@ void filter_and_write_frags(uint64_t * filtered_hits_x, uint64_t * filtered_hits
 
         ++current;
     }
-    fprintf(stdout, "[INFO] Remaining frags %"PRIu64" out of %"PRIu64" on strand %c\n", written_frags, n_frags, strand);
+    fprintf(stdout, "[INFO] Remaining frags %"PRIu32" out of %"PRIu32" on strand %c\n", written_frags, n_frags, strand);
     
 
 }
 
-uint64_t generate_hits_fast(uint64_t words_at_once, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
-    uint64_t * keys_y, uint64_t * values_x, uint64_t * values_y, uint64_t items_x, uint64_t items_y, uint64_t query_len, uint64_t ref_len){
+uint32_t generate_hits_fast(uint32_t words_at_once, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
+    uint64_t * keys_y, uint32_t * values_x, uint32_t * values_y, uint32_t items_x, uint32_t items_y, uint32_t query_len, uint32_t ref_len){
 
     // Nota: para generar TODOS los hits hay que tener en cuenta que si hay hits repetidos en
     // ambos diccionarios se debe volver atrás cuando se encuentra uno distinto
@@ -159,7 +160,7 @@ uint64_t generate_hits_fast(uint64_t words_at_once, uint64_t * diagonals, Hit * 
         if(id_x == items_x || id_y == items_y){ break; }
         
         
-        if(keys_x[id_x] == keys_y[id_y] && values_x[id_x] != 0xFFFFFFFFFFFFFFFF && values_y[id_y] != 0xFFFFFFFFFFFFFFFF) {
+        if(keys_x[id_x] == keys_y[id_y] && values_x[id_x] != 0xFFFFFFFF && values_y[id_y] != 0xFFFFFFFF) {
             
             //if(last_position_y == -1) last_position_y = (int64_t) id_y;
             //if(last_position_x == -1) last_position_x = (int64_t) id_x;
@@ -172,7 +173,7 @@ uint64_t generate_hits_fast(uint64_t words_at_once, uint64_t * diagonals, Hit * 
             // Le estoy sumando el diff_offset (i.e. lo mas largo que puede ser la y) para que siempre sean positivos (como x es positivo)
             // pues solo la y resta
             // This is good enough for sequences length up to 2,147,483,648 bp 
-            diagonals[n_hits_found] =  ((diff_offset + values_x[id_x]) - values_y[id_y]) * diag_len + (diff_offset + values_x[id_x]);
+            diagonals[n_hits_found] =  ((diff_offset + (uint64_t) values_x[id_x]) - (uint64_t) values_y[id_y]) * diag_len + (diff_offset + (uint64_t) values_x[id_x]);
 
             //printf("Matching hash %"PRIu64" with %"PRIu64" @ (%"PRIu64", %"PRIu64")\n", keys_x[id_x], keys_y[id_y], values_x[id_x], values_y[id_y]);
 
@@ -200,8 +201,8 @@ uint64_t generate_hits_fast(uint64_t words_at_once, uint64_t * diagonals, Hit * 
 
 }
 
-uint64_t generate_hits_quadratic(uint64_t words_at_once, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
-    uint64_t * keys_y, uint64_t * values_x, uint64_t * values_y, uint64_t items_x, uint64_t items_y, uint64_t query_len, uint64_t ref_len){
+uint32_t generate_hits_quadratic(uint32_t words_at_once, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
+    uint64_t * keys_y, uint32_t * values_x, uint32_t * values_y, uint32_t items_x, uint32_t items_y, uint32_t query_len, uint32_t ref_len){
 
     // Nota: para generar TODOS los hits hay que tener en cuenta que si hay hits repetidos en
     // ambos diccionarios se debe volver atrás cuando se encuentra uno distinto
@@ -220,7 +221,7 @@ uint64_t generate_hits_quadratic(uint64_t words_at_once, uint64_t * diagonals, H
         {
 
             // Compare
-            if(keys_x[id_x] == keys_y[id_y] && values_x[id_x] != 0xFFFFFFFFFFFFFFFF && values_y[id_y] != 0xFFFFFFFFFFFFFFFF) {
+            if(keys_x[id_x] == keys_y[id_y] && values_x[id_x] != 0xFFFFFFFF && values_y[id_y] != 0xFFFFFFFF) {
                 
                 //if(last_position_y == -1) last_position_y = (int64_t) id_y;
                 //if(last_position_x == -1) last_position_x = (int64_t) id_x;
@@ -233,7 +234,7 @@ uint64_t generate_hits_quadratic(uint64_t words_at_once, uint64_t * diagonals, H
                 // Le estoy sumando el diff_offset (i.e. lo mas largo que puede ser la y) para que siempre sean positivos (como x es positivo)
                 // pues solo la y resta
                 // This is good enough for sequences length up to 2,147,483,648 bp 
-                diagonals[n_hits_found] =  ((diff_offset + values_x[id_x]) - values_y[id_y]) * diag_len + (diff_offset + values_x[id_x]);
+                diagonals[n_hits_found] =  ((diff_offset + (uint64_t) values_x[id_x]) - (uint64_t) values_y[id_y]) * diag_len + (diff_offset + (uint64_t) values_x[id_x]);
 
                 //printf("Matching hash %"PRIu64" with %"PRIu64" @ (%"PRIu64", %"PRIu64")\n", keys_x[id_x], keys_y[id_y], values_x[id_x], values_y[id_y]);
 
@@ -251,8 +252,8 @@ uint64_t generate_hits_quadratic(uint64_t words_at_once, uint64_t * diagonals, H
 }
 
 
-uint64_t generate_hits_sensitive(uint64_t words_at_once, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
-    uint64_t * keys_y, uint64_t * values_x, uint64_t * values_y, uint64_t items_x, uint64_t items_y, uint64_t query_len, uint64_t ref_len, uint64_t max_frequency){
+uint32_t generate_hits_sensitive(uint32_t words_at_once, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
+    uint64_t * keys_y, uint32_t * values_x, uint32_t * values_y, uint32_t items_x, uint32_t items_y, uint32_t query_len, uint32_t ref_len, uint32_t max_frequency){
 
     // Nota: para generar TODOS los hits hay que tener en cuenta que si hay hits repetidos en
     // ambos diccionarios se debe volver atrás cuando se encuentra uno distinto
@@ -273,18 +274,18 @@ uint64_t generate_hits_sensitive(uint64_t words_at_once, uint64_t * diagonals, H
         if(id_x == items_x || id_y == items_y){ break; }
 
         
-        if(keys_x[id_x] == keys_y[id_y] && values_x[id_x] != 0xFFFFFFFFFFFFFFFF && values_y[id_y] != 0xFFFFFFFFFFFFFFFF) {
+        if(keys_x[id_x] == keys_y[id_y] && values_x[id_x] != 0xFFFFFFFF && values_y[id_y] != 0xFFFFFFFF) {
 
             uint64_t curr_id_y;
 
             for(curr_id_y = id_y; curr_id_y < items_y; curr_id_y++){
 
-                if(keys_x[id_x] != keys_y[curr_id_y] || values_x[id_x] == 0xFFFFFFFFFFFFFFFF || values_y[curr_id_y] == 0xFFFFFFFFFFFFFFFF) break;
+                if(keys_x[id_x] != keys_y[curr_id_y] || values_x[id_x] == 0xFFFFFFFF || values_y[curr_id_y] == 0xFFFFFFFF) break;
 
                 hits[n_hits_found].p1 = values_x[id_x];
                 hits[n_hits_found].p2 = values_y[curr_id_y];
 
-                diagonals[n_hits_found] =  ((diff_offset + values_x[id_x]) - values_y[curr_id_y]) * diag_len + (diff_offset + values_x[id_x]);
+                diagonals[n_hits_found] =  ((diff_offset + (uint64_t) values_x[id_x]) - (uint64_t) values_y[curr_id_y]) * diag_len + (diff_offset + (uint64_t) values_x[id_x]);
 
                 ++n_hits_found;
                 ++current_hits;
@@ -310,11 +311,11 @@ uint64_t generate_hits_sensitive(uint64_t words_at_once, uint64_t * diagonals, H
 
 }
 
-uint64_t filter_hits_forward(uint64_t * diagonals, uint64_t * indexing_numbers, Hit * hits, uint64_t * filtered_hits_x, uint64_t * filtered_hits_y, uint64_t n_hits_found){
+uint32_t filter_hits_forward(uint64_t * diagonals, uint32_t * indexing_numbers, Hit * hits, uint32_t * filtered_hits_x, uint32_t * filtered_hits_y, uint32_t n_hits_found){
     
     if(n_hits_found == 0) return 0;
     int64_t diagonal = (int64_t) hits[indexing_numbers[0]].p1 - (int64_t) hits[indexing_numbers[0]].p2;
-    uint64_t last_position = hits[indexing_numbers[0]].p1, t = 1, t_kept = 0;
+    uint32_t last_position = hits[indexing_numbers[0]].p1, t = 1, t_kept = 0;
 
     while (t < (n_hits_found-1)) {
 
@@ -333,11 +334,11 @@ uint64_t filter_hits_forward(uint64_t * diagonals, uint64_t * indexing_numbers, 
     return t_kept;
 }
 
-uint64_t filter_hits_reverse(uint64_t * diagonals, uint64_t * indexing_numbers, Hit * hits, uint64_t * filtered_hits_x, uint64_t * filtered_hits_y, uint64_t n_hits_found){
+uint32_t filter_hits_reverse(uint64_t * diagonals, uint32_t * indexing_numbers, Hit * hits, uint32_t * filtered_hits_x, uint32_t * filtered_hits_y, uint32_t n_hits_found){
     
     if(n_hits_found == 0) return 0;
     int64_t diagonal = (int64_t) hits[indexing_numbers[0]].p1 - (int64_t) hits[indexing_numbers[0]].p2;
-    uint64_t last_position = hits[indexing_numbers[0]].p1, t = 1, t_kept = 0;
+    uint32_t last_position = hits[indexing_numbers[0]].p1, t = 1, t_kept = 0;
 
     while (t < (n_hits_found-1)) {
 
@@ -403,7 +404,7 @@ void read_kmers(uint64_t query_l, char * seq_x, uint64_t * keys_x, uint64_t * va
     }
 }
 
-void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, FILE ** ref, FILE ** out, uint64_t * min_length, int * fast, uint64_t * max_frequency){
+void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, FILE ** ref, FILE ** out, uint32_t * min_length, int * fast, uint32_t * max_frequency){
     
     int pNum = 0;
     char * p1 = NULL, * p2 = NULL;
@@ -440,7 +441,7 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
         }
 
         if(strcmp(av[pNum], "-len") == 0){
-            *min_length = (uint64_t) atoi(av[pNum+1]);
+            *min_length = (uint32_t) atoi(av[pNum+1]);
             if(atoi(av[pNum+1]) < 1) { fprintf(stderr, "Length must be >0\n"); exit(-1); }
         }
 
@@ -449,7 +450,7 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
         }
 
         if(strcmp(av[pNum], "-max_freq") == 0){
-            *max_frequency = (uint64_t) atoi(av[pNum+1]);
+            *max_frequency = (uint32_t) atoi(av[pNum+1]);
             if(atoi(av[pNum+1]) < 1) { fprintf(stderr, "Frequency must be >0\n"); exit(-1); }
         }
 
@@ -537,9 +538,9 @@ char * get_basename(char * path){
     if (!s) return strdup(path); else return strdup(s + 1);
 }
 
-uint64_t get_seq_len(FILE * f) {
+uint32_t get_seq_len(FILE * f) {
     char c = '\0';
-    uint64_t l = 0;
+    uint32_t l = 0;
 
     while(!feof(f)){
         c = getc(f);
@@ -558,9 +559,9 @@ uint64_t get_seq_len(FILE * f) {
     return l;
 }
 
-uint64_t load_seq(FILE * f, char * seq) {
+uint32_t load_seq(FILE * f, char * seq) {
     char c = '\0';
-    uint64_t l = 0;
+    uint32_t l = 0;
 
     while(!feof(f)){
         c = getc(f);
