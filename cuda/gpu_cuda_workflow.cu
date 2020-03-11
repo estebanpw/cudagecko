@@ -68,9 +68,9 @@ int main(int argc, char ** argv)
 
 
     // Calculate how much ram we can use for every chunk
-    // The maximum amount of RAM required simultaneously is words_at_once * 34
+    // The maximum amount of RAM required simultaneously is words_at_once * 18
     uint32_t effective_global_ram =  (global_device_RAM - 100*1024*1024); //Minus 100 MBs for other stuff
-    uint32_t factor = 34;
+    uint32_t factor = 24;
     uint32_t ram_to_be_used = (effective_global_ram) / (factor); // update this with max usage
     uint32_t words_at_once = ram_to_be_used;
     if(fast == 0) words_at_once = words_at_once/6;
@@ -229,10 +229,7 @@ int main(int argc, char ** argv)
         if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (1). Error: %d\n", ret); exit(-1); }
         ret = cudaMalloc(&values, words_at_once * sizeof(uint32_t));
         if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (2). Error: %d\n", ret); exit(-1); }
-        ret = cudaMalloc(&keys_buf, words_at_once * sizeof(uint64_t));
-        if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (3). Error: %d\n", ret); exit(-1); }
-        ret = cudaMalloc(&values_buf, words_at_once * sizeof(uint32_t));
-        if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (4). Error: %d\n", ret); exit(-1); }
+        
 
         fprintf(stdout, "[EXECUTING] Running split %d -> (%d%%)\n", split, (int)((100*pos_in_query)/query_len));
 
@@ -259,6 +256,8 @@ int main(int argc, char ** argv)
         ret = cudaDeviceSynchronize();
         if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on query. Error: %d\n", ret); exit(-1); }
 
+        cudaFree(seq_dev_mem);
+
         // FOR DEBUG
         // Copy kmers to local
         
@@ -280,6 +279,11 @@ int main(int argc, char ** argv)
         ////////////////////////////////////////////////////////////////////////////////
         // Sort the query kmers
         ////////////////////////////////////////////////////////////////////////////////
+
+        ret = cudaMalloc(&keys_buf, words_at_once * sizeof(uint64_t));
+        if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (3). Error: %d\n", ret); exit(-1); }
+        ret = cudaMalloc(&values_buf, words_at_once * sizeof(uint32_t));
+        if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (4). Error: %d\n", ret); exit(-1); }
 
         cub::DoubleBuffer<uint64_t> d_keys(keys, keys_buf);
         cub::DoubleBuffer<uint32_t> d_values(values, values_buf);
@@ -320,7 +324,6 @@ int main(int argc, char ** argv)
 
         pos_in_query += words_at_once;
 
-        cudaFree(seq_dev_mem);
         cudaFree(keys);
         cudaFree(values);
         cudaFree(keys_buf);
@@ -345,10 +348,7 @@ int main(int argc, char ** argv)
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (1). Error: %d\n", ret); exit(-1); }
             ret = cudaMalloc(&values, words_at_once * sizeof(uint32_t));
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (2). Error: %d\n", ret); exit(-1); }
-            ret = cudaMalloc(&keys_buf, words_at_once * sizeof(uint64_t));
-            if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (3). Error: %d\n", ret); exit(-1); }
-            ret = cudaMalloc(&values_buf, words_at_once * sizeof(uint32_t));
-            if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (4). Error: %d\n", ret); exit(-1); }
+            
 
             // Load sequence chunk into ram
             ret = cudaMemcpy(seq_dev_mem, &ref_seq_host[pos_in_ref], items_read_y, cudaMemcpyHostToDevice);
@@ -364,6 +364,9 @@ int main(int argc, char ** argv)
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on ref. Error: %d\n", ret); exit(-1); }
 
+
+            cudaFree(seq_dev_mem);
+
             // remove all this             
             
             //read_kmers(ref_len, ref_seq_host, dict_y_keys, dict_y_values);
@@ -374,6 +377,11 @@ int main(int argc, char ** argv)
             ////////////////////////////////////////////////////////////////////////////////
             // Sort reference FORWARD kmers
             ////////////////////////////////////////////////////////////////////////////////
+
+            ret = cudaMalloc(&keys_buf, words_at_once * sizeof(uint64_t));
+            if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (3). Error: %d\n", ret); exit(-1); }
+            ret = cudaMalloc(&values_buf, words_at_once * sizeof(uint32_t));
+            if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (4). Error: %d\n", ret); exit(-1); }
 
             ret = cudaMemset(keys_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
             ret = cudaMemset(values_buf, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
@@ -422,7 +430,7 @@ int main(int argc, char ** argv)
             //Qsort(dict_y_keys, dict_y_values, 0, (int64_t) ref_len);
             //for(i=0; i<words_at_once; i++) printf("%" PRIu64" %"PRIu64"\n", dict_y_keys[i], dict_y_values[i]);
 
-            cudaFree(seq_dev_mem);
+            
             cudaFree(keys);
             cudaFree(values);
             cudaFree(keys_buf);
@@ -597,10 +605,7 @@ int main(int argc, char ** argv)
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (1). Error: %d\n", ret); exit(-1); }
             ret = cudaMalloc(&values, words_at_once * sizeof(uint32_t));
             if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (2). Error: %d\n", ret); exit(-1); }
-            ret = cudaMalloc(&keys_buf, words_at_once * sizeof(uint64_t));
-            if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (3). Error: %d\n", ret); exit(-1); }
-            ret = cudaMalloc(&values_buf, words_at_once * sizeof(uint32_t));
-            if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (4). Error: %d\n", ret); exit(-1); }
+            
 
             // Load sequence chunk into ram
             ret = cudaMemcpy(seq_dev_mem, &ref_rev_seq_host[pos_in_ref], items_read_y, cudaMemcpyHostToDevice);
@@ -616,9 +621,16 @@ int main(int argc, char ** argv)
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on ref reversed. Error: %d\n", ret); exit(-1); }
 
+            cudaFree(seq_dev_mem);
+
             ////////////////////////////////////////////////////////////////////////////////
             // Sort reference FORWARD kmers BUT REVERSED !
             ////////////////////////////////////////////////////////////////////////////////
+
+            ret = cudaMalloc(&keys_buf, words_at_once * sizeof(uint64_t));
+            if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (3). Error: %d\n", ret); exit(-1); }
+            ret = cudaMalloc(&values_buf, words_at_once * sizeof(uint32_t));
+            if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (4). Error: %d\n", ret); exit(-1); }
 
             ret = cudaMemset(keys_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
             ret = cudaMemset(values_buf, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
@@ -655,7 +667,7 @@ int main(int argc, char ** argv)
             // Generate hits for the current split BUT REVERSED !
             ////////////////////////////////////////////////////////////////////////////////
 
-            cudaFree(seq_dev_mem);
+            
             cudaFree(keys);
             cudaFree(values);
             cudaFree(keys_buf);
