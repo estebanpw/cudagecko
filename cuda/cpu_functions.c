@@ -141,7 +141,7 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
 
 }
 
-uint32_t generate_hits_fast(uint32_t words_at_once, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
+uint32_t generate_hits_fast(uint32_t max_hits, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
     uint64_t * keys_y, uint32_t * values_x, uint32_t * values_y, uint32_t items_x, uint32_t items_y, uint32_t query_len, uint32_t ref_len){
 
     // Nota: para generar TODOS los hits hay que tener en cuenta que si hay hits repetidos en
@@ -178,7 +178,7 @@ uint32_t generate_hits_fast(uint32_t words_at_once, uint64_t * diagonals, Hit * 
             //printf("Matching hash %"PRIu64" with %"PRIu64" @ (%"PRIu64", %"PRIu64")\n", keys_x[id_x], keys_y[id_y], values_x[id_x], values_y[id_y]);
 
             ++n_hits_found;
-            if(n_hits_found == words_at_once){ fprintf(stderr, "Reached maximum limit of hits\n"); }
+            if(n_hits_found == max_hits){ fprintf(stderr, "Reached maximum limit of hits\n"); }
 
             ++id_y;
 
@@ -252,7 +252,7 @@ uint32_t generate_hits_quadratic(uint32_t words_at_once, uint64_t * diagonals, H
 }
 
 
-uint32_t generate_hits_sensitive(uint32_t words_at_once, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
+uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
     uint64_t * keys_y, uint32_t * values_x, uint32_t * values_y, uint32_t items_x, uint32_t items_y, uint32_t query_len, uint32_t ref_len, uint32_t max_frequency){
 
     // Nota: para generar TODOS los hits hay que tener en cuenta que si hay hits repetidos en
@@ -290,7 +290,7 @@ uint32_t generate_hits_sensitive(uint32_t words_at_once, uint64_t * diagonals, H
                 ++n_hits_found;
                 ++current_hits;
                 if(current_hits == max_frequency) break;
-                if(n_hits_found == words_at_once){ fprintf(stderr, "Reached maximum limit of hits (max %"PRIu64")\n", n_hits_found); }
+                if(n_hits_found == max_hits){ fprintf(stderr, "Reached maximum limit of hits (max %"PRIu64")\n", n_hits_found); }
 
             }
 
@@ -404,7 +404,7 @@ void read_kmers(uint64_t query_l, char * seq_x, uint64_t * keys_x, uint64_t * va
     }
 }
 
-void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, FILE ** ref, FILE ** out, uint32_t * min_length, int * fast, uint32_t * max_frequency){
+void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, FILE ** ref, FILE ** out, uint32_t * min_length, int * fast, uint32_t * max_frequency, float * factor){
     
     int pNum = 0;
     char * p1 = NULL, * p2 = NULL;
@@ -415,9 +415,13 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
             fprintf(stdout, "           GECKOCUDA -query [file] -ref [file] -dev [device]\n");
             fprintf(stdout, "OPTIONAL:\n");
             fprintf(stdout, "           -len        Minimum length of a frag (default 32)\n");
-            fprintf(stdout, "           --sensitive Runs in sensitive mode as opposed to fast (default)\n");
             fprintf(stdout, "           -max_freq   [only works in --sensitive] Maximum frequency per hit (default: unlimited)\n");
             fprintf(stdout, "                       (fast mode can skip highly repeated seeds)\n");
+            fprintf(stdout, "           -factor     Fraction of GPU Ram dedicated to words (default: 0.125)\n");
+            fprintf(stdout, "                       (The bigger the fraction, the faster it will run - however highly similar sequences\n");
+            fprintf(stdout, "                       such as human and gorilla chromosomes require a smaller fractions because of the\n");
+            fprintf(stdout, "                       huge number of hits that are generated)\n");
+            fprintf(stdout, "           --fast      Runs in fast mode as opposed to sensitive (default)\n");
             fprintf(stdout, "           --help      Shows help for program usage\n");
             fprintf(stdout, "\n");
             exit(1);
@@ -445,8 +449,13 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
             if(atoi(av[pNum+1]) < 1) { fprintf(stderr, "Length must be >0\n"); exit(-1); }
         }
 
-        if(strcmp(av[pNum], "--sensitive") == 0){
-            *fast = 0;
+        if(strcmp(av[pNum], "-factor") == 0){
+            *factor = atof(av[pNum+1]);
+            if(atof(av[pNum+1]) <= 0) { fprintf(stderr, "Factor must be >0\n"); exit(-1); }
+        }
+
+        if(strcmp(av[pNum], "--fast") == 0){
+            *fast = 1;
         }
 
         if(strcmp(av[pNum], "-max_freq") == 0){
