@@ -442,3 +442,29 @@ __global__ void kernel_reverse_complement(const char * sequence, char * reverse_
 		reverse_sequence[lookup] = complement;
 	}
 }
+
+__global__ void kernel_reverse_complement_async(const char * sequence, char * reverse_sequence, uint32_t seq_len) {
+	
+	//uint64_t id = (31 - threadIdx.x) + blockIdx.x * blockDim.x;
+	uint64_t id = threadIdx.x + blockIdx.x * blockDim.x;
+	
+	//printf("DAS START %.20s and i am %d on block %d\n", sequence, threadIdx.x, blockIdx.x);
+
+
+	if(id < seq_len){
+
+		//uint64_t lookup = seq_len - id;
+		uint32_t lookup = (seq_len - 1) - id;
+
+		if(threadIdx.x == 0 && blockIdx.x == 0) printf(" loookup : %"PRIu32"\n", lookup);
+
+		char original = sequence[id];
+		char complement = 'N';
+		if(original == 'A') complement = 'T';
+		if(original == 'C') complement = 'G';
+		if(original == 'G') complement = 'C';
+		if(original == 'T') complement = 'A';
+
+		reverse_sequence[lookup] = complement;
+	}
+}

@@ -133,11 +133,11 @@ int main(int argc, char ** argv)
     }
 
     // Create variables to load up sequences using PINNED MEMORY to increase transfer rate
-    char * query_seq_host = (char *) malloc(query_len * sizeof(char));
-    char * ref_seq_host = (char *) malloc(ref_len * sizeof(char));
-    char * ref_rev_seq_host = (char *) malloc(ref_len * sizeof(char));
+    //char * query_seq_host = (char *) malloc(query_len * sizeof(char));
+    //char * ref_seq_host = (char *) malloc(ref_len * sizeof(char));
+    //char * ref_rev_seq_host = (char *) malloc(ref_len * sizeof(char));
 
-    /*
+    
     char * query_seq_host, * ref_seq_host, * ref_rev_seq_host;
     ret = cudaHostAlloc(&query_seq_host, query_len * sizeof(char), cudaHostAllocMapped); 
     if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for query_seq host. Error: %d\n", ret); exit(-1); }
@@ -145,7 +145,7 @@ int main(int argc, char ** argv)
     if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for ref_seq host. Error: %d\n", ret); exit(-1); }
     ret = cudaHostAlloc(&ref_rev_seq_host, ref_len * sizeof(char), cudaHostAllocMapped); 
     if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for reverse ref_seq host. Error: %d\n", ret); exit(-1); }
-    */
+    
 
     
 
@@ -159,8 +159,10 @@ int main(int argc, char ** argv)
 
     // Create streams to allow concurrent copy and execute
 
-    //cudaStreamCreate(&stream_copy);
-    //cudaStreamCreate(&stream_execute);
+    uint32_t n_streams = 4;
+    cudaStream_t streams[n_streams];
+
+    for(i=0; i<n_streams; i++) cudaStreamCreate(&streams[i]);
 
     // Pointer to device memory allocating the query sequence, reference and reversed reference
     char * seq_dev_mem = NULL, * seq_dev_mem_aux = NULL, * seq_dev_mem_reverse_aux = NULL;
@@ -176,12 +178,45 @@ int main(int argc, char ** argv)
     ret = cudaMalloc(&seq_dev_mem_reverse_aux, ref_len * sizeof(char)); 
     if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for reverse reference sequence in device (Attempted %"PRIu32" bytes) at reversing. Error: %d\n", (uint32_t) (ref_len * sizeof(char)), ret); exit(-1); }
 
-    ret = cudaMemcpy(seq_dev_mem_aux, ref_seq_host, ref_len, cudaMemcpyHostToDevice);
-    if(ret != cudaSuccess){ fprintf(stderr, "Could not copy reference sequence to device for reversing. Error: %d\n", ret); exit(-1); }
+    //ret = cudaMemcpy(seq_dev_mem_aux, ref_seq_host, ref_len, cudaMemcpyHostToDevice);
+    //if(ret != cudaSuccess){ fprintf(stderr, "Could not copy reference sequence to device for reversing. Error: %d\n", ret); exit(-1); }
 
-    number_of_blocks = (ref_len)/threads_number + 1;
+    //kernel_reverse_complement<<<number_of_blocks, threads_number>>>(seq_dev_mem_aux, seq_dev_mem_reverse_aux, ref_len);
+    
+    if(ref_len > 1024){
+    
 
-    kernel_reverse_complement<<<number_of_blocks, threads_number>>>(seq_dev_mem_aux, seq_dev_mem_reverse_aux, ref_len);
+        uint32_t chunk_size = ref_len/n_streams;
+        if(ref_len % n_streams != 0) chunk_size += 1;
+        number_of_blocks = chunk_size/threads_number;
+        if(number_of_blocks % threads_number != 0) number_of_blocks += 1;
+        uint32_t offset, inverse_offset;
+
+        
+        for(i=0; i<n_streams; i++)
+        {
+            offset = chunk_size * i;
+            inverse_offset = (chunk_size * (i+1) < ref_len) ? ref_len - chunk_size * (i+1) : 0;
+
+            //printf("copying at %"PRIu32" this amount %"PRIu32" which ends in %"PRIu32"\n", offset, MIN(chunk_size, ref_len - offset), inverse_offset);
+            
+            ret = cudaMemcpyAsync(seq_dev_mem_aux + offset, ref_seq_host + offset, MIN(chunk_size, ref_len - offset), cudaMemcpyHostToDevice, streams[i]);
+            if(ret != cudaSuccess){ fprintf(stderr, "Could not copy reference sequence to device for reversing. Error: %d\n", ret); exit(-1); }
+
+            kernel_reverse_complement<<<number_of_blocks, threads_number, 0, streams[i]>>>(seq_dev_mem_aux + offset, seq_dev_mem_reverse_aux + inverse_offset, MIN(chunk_size, ref_len - offset));
+
+        }
+
+    }else{
+
+        ret = cudaMemcpy(seq_dev_mem_aux, ref_seq_host, ref_len, cudaMemcpyHostToDevice);
+        if(ret != cudaSuccess){ fprintf(stderr, "Could not copy reference sequence to device for reversing. Error: %d\n", ret); exit(-1); }
+
+        kernel_reverse_complement<<<number_of_blocks, threads_number>>>(seq_dev_mem_aux, seq_dev_mem_reverse_aux, ref_len);
+
+    }
+    
+    
 
     ret = cudaDeviceSynchronize();
     if(ret != cudaSuccess){ fprintf(stderr, "Could not compute reverse on reference. Error: %d\n", ret); exit(-1); }
@@ -196,10 +231,14 @@ int main(int argc, char ** argv)
     // Print some info
 
     fprintf(stdout, "[INFO] Showing start of reference sequence:\n");
+    
     fprintf(stdout, "\t(Begin ref)%.32s\n", ref_seq_host);
     fprintf(stdout, "\t(Begin rev)%.32s\n", ref_rev_seq_host);
     fprintf(stdout, "\t(End   ref)%.32s\n", &ref_seq_host[ref_len-32]);
     fprintf(stdout, "\t(End   rev)%.32s\n", &ref_rev_seq_host[ref_len-32]);
+    
+    //fprintf(stdout, "\t(Begin ref)%s\n", ref_seq_host);
+    //fprintf(stdout, "\t(Begin rev)%s\n", ref_rev_seq_host);
 
 
     // Write header to CSV
@@ -215,73 +254,73 @@ int main(int argc, char ** argv)
     uint32_t * dict_x_values, * dict_y_values;
 
     // These depends on the number of words
-    dict_x_keys = (uint64_t *) malloc(words_at_once*sizeof(uint64_t));
-    //ret = cudaHostAlloc(&dict_x_keys, words_at_once * sizeof(uint64_t), cudaHostAllocMapped); 
-    //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for dict_x_keys. Error: %d\n", ret); exit(-1); }
-    dict_x_values = (uint32_t *) malloc(words_at_once*sizeof(uint32_t));
-    //ret = cudaHostAlloc(&dict_x_values, words_at_once * sizeof(uint32_t), cudaHostAllocMapped); 
-    //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for dict_x_values. Error: %d\n", ret); exit(-1); }
-    if(dict_x_keys == NULL || dict_x_values == NULL) { fprintf(stderr, "Allocating for kmer download in query. Error: %d\n", ret); exit(-1); }
-    dict_y_keys = (uint64_t *) malloc(words_at_once*sizeof(uint64_t));
-    //ret = cudaHostAlloc(&dict_y_keys, words_at_once * sizeof(uint64_t), cudaHostAllocMapped); 
-    //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for dict_y_keys. Error: %d\n", ret); exit(-1); }
-    dict_y_values = (uint32_t *) malloc(words_at_once*sizeof(uint32_t));
-    //ret = cudaHostAlloc(&dict_y_values, words_at_once * sizeof(uint32_t), cudaHostAllocMapped); 
-    //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for dict_y_values. Error: %d\n", ret); exit(-1); }
-    if(dict_y_keys == NULL || dict_y_values == NULL) { fprintf(stderr, "Allocating for kmer download in ref. Error: %d\n", ret); exit(-1); }
+    //dict_x_keys = (uint64_t *) malloc(words_at_once*sizeof(uint64_t));
+    ret = cudaHostAlloc(&dict_x_keys, words_at_once * sizeof(uint64_t), cudaHostAllocMapped); 
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for dict_x_keys. Error: %d\n", ret); exit(-1); }
+    //dict_x_values = (uint32_t *) malloc(words_at_once*sizeof(uint32_t));
+    ret = cudaHostAlloc(&dict_x_values, words_at_once * sizeof(uint32_t), cudaHostAllocMapped); 
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for dict_x_values. Error: %d\n", ret); exit(-1); }
+    //if(dict_x_keys == NULL || dict_x_values == NULL) { fprintf(stderr, "Allocating for kmer download in query. Error: %d\n", ret); exit(-1); }
+    //dict_y_keys = (uint64_t *) malloc(words_at_once*sizeof(uint64_t));
+    ret = cudaHostAlloc(&dict_y_keys, words_at_once * sizeof(uint64_t), cudaHostAllocMapped); 
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for dict_y_keys. Error: %d\n", ret); exit(-1); }
+    //dict_y_values = (uint32_t *) malloc(words_at_once*sizeof(uint32_t));
+    ret = cudaHostAlloc(&dict_y_values, words_at_once * sizeof(uint32_t), cudaHostAllocMapped); 
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for dict_y_values. Error: %d\n", ret); exit(-1); }
+    //if(dict_y_keys == NULL || dict_y_values == NULL) { fprintf(stderr, "Allocating for kmer download in ref. Error: %d\n", ret); exit(-1); }
 
     // These are now depending on the number of hits
-    Hit * hits = (Hit *) malloc(max_hits*sizeof(Hit));
-    //Hit * hits;
-    //ret = cudaHostAlloc(&hits, max_hits * sizeof(Hit), cudaHostAllocMapped); 
-    //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for hits. Error: %d\n", ret); exit(-1); }
+    //Hit * hits = (Hit *) malloc(max_hits*sizeof(Hit));
+    Hit * hits;
+    ret = cudaHostAlloc(&hits, max_hits * sizeof(Hit), cudaHostAllocMapped); 
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for hits. Error: %d\n", ret); exit(-1); }
 
-    uint32_t * filtered_hits_x = (uint32_t *) malloc(max_hits*sizeof(uint32_t));
-    //uint32_t * filtered_hits_x;
-    //ret = cudaHostAlloc(&filtered_hits_x, max_hits * sizeof(uint32_t), cudaHostAllocMapped); 
-    //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for filtered_hits_x. Error: %d\n", ret); exit(-1); }
+    //uint32_t * filtered_hits_x = (uint32_t *) malloc(max_hits*sizeof(uint32_t));
+    uint32_t * filtered_hits_x;
+    ret = cudaHostAlloc(&filtered_hits_x, max_hits * sizeof(uint32_t), cudaHostAllocMapped); 
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for filtered_hits_x. Error: %d\n", ret); exit(-1); }
 
-    uint32_t * filtered_hits_y = (uint32_t *) malloc(max_hits*sizeof(uint32_t));
-    //uint32_t * filtered_hits_y;
-    //ret = cudaHostAlloc(&filtered_hits_y, max_hits * sizeof(uint32_t), cudaHostAllocMapped); 
-    //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for filtered_hits_y. Error: %d\n", ret); exit(-1); }
+    //uint32_t * filtered_hits_y = (uint32_t *) malloc(max_hits*sizeof(uint32_t));
+    uint32_t * filtered_hits_y;
+    ret = cudaHostAlloc(&filtered_hits_y, max_hits * sizeof(uint32_t), cudaHostAllocMapped); 
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for filtered_hits_y. Error: %d\n", ret); exit(-1); }
 
     // These are for the device
     uint32_t * device_filt_hits_x, * device_filt_hits_y, * left_offset, * right_offset;
 
-    uint32_t * host_left_offset = (uint32_t *) malloc(max_hits*sizeof(uint32_t));
-    //uint32_t * host_left_offset;
-    //ret = cudaHostAlloc(&host_left_offset, max_hits * sizeof(uint32_t), cudaHostAllocMapped); 
-    //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for host_left_offset. Error: %d\n", ret); exit(-1); }
+    //uint32_t * host_left_offset = (uint32_t *) malloc(max_hits*sizeof(uint32_t));
+    uint32_t * host_left_offset;
+    ret = cudaHostAlloc(&host_left_offset, max_hits * sizeof(uint32_t), cudaHostAllocMapped); 
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for host_left_offset. Error: %d\n", ret); exit(-1); }
 
-    uint32_t * host_right_offset = (uint32_t *) malloc(max_hits*sizeof(uint32_t));
-    //uint32_t * host_right_offset;
-    //ret = cudaHostAlloc(&host_right_offset, max_hits * sizeof(uint32_t), cudaHostAllocMapped); 
-    //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for host_right_offset. Error: %d\n", ret); exit(-1); }
+    //uint32_t * host_right_offset = (uint32_t *) malloc(max_hits*sizeof(uint32_t));
+    uint32_t * host_right_offset;
+    ret = cudaHostAlloc(&host_right_offset, max_hits * sizeof(uint32_t), cudaHostAllocMapped); 
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for host_right_offset. Error: %d\n", ret); exit(-1); }
 
-    if(host_left_offset == NULL || host_right_offset == NULL) terror("Could not allocate host offsets");
-    if(hits == NULL || filtered_hits_x == NULL || filtered_hits_y == NULL) terror("Could not allocate hits");
+    //if(host_left_offset == NULL || host_right_offset == NULL) terror("Could not allocate host offsets");
+    //if(hits == NULL || filtered_hits_x == NULL || filtered_hits_y == NULL) terror("Could not allocate hits");
 
-    uint64_t * diagonals = (uint64_t *) malloc(max_hits*sizeof(uint64_t));
-    //uint64_t * diagonals;
-    //ret = cudaHostAlloc(&diagonals, max_hits * sizeof(uint64_t), cudaHostAllocMapped); 
-    //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for diagonals. Error: %d\n", ret); exit(-1); }
+    //uint64_t * diagonals = (uint64_t *) malloc(max_hits*sizeof(uint64_t));
+    uint64_t * diagonals;
+    ret = cudaHostAlloc(&diagonals, max_hits * sizeof(uint64_t), cudaHostAllocMapped); 
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for diagonals. Error: %d\n", ret); exit(-1); }
 
     uint64_t * device_diagonals, * device_diagonals_buf;
     uint32_t * device_hits, * device_hits_buf; // These will actually be just indices to redirect the hits sorting
 
-    uint32_t * ascending_numbers = (uint32_t *) malloc(max_hits*sizeof(uint32_t)); for(i=0; i<max_hits; i++) ascending_numbers[i] = i;
-    //uint32_t * ascending_numbers;
-    //ret = cudaHostAlloc(&ascending_numbers, max_hits * sizeof(uint32_t), cudaHostAllocMapped); 
-    //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for ascending numbers. Error: %d\n", ret); exit(-1); }
-    //for(i=0; i<max_hits; i++) ascending_numbers[i] = i;
+    //uint32_t * ascending_numbers = (uint32_t *) malloc(max_hits*sizeof(uint32_t)); for(i=0; i<max_hits; i++) ascending_numbers[i] = i;
+    uint32_t * ascending_numbers;
+    ret = cudaHostAlloc(&ascending_numbers, max_hits * sizeof(uint32_t), cudaHostAllocMapped); 
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for ascending numbers. Error: %d\n", ret); exit(-1); }
+    for(i=0; i<max_hits; i++) ascending_numbers[i] = i;
 
-    uint32_t * indexing_numbers = (uint32_t *) malloc(max_hits*sizeof(uint32_t));
-    //uint32_t * indexing_numbers;
-    //ret = cudaHostAlloc(&indexing_numbers, max_hits * sizeof(uint32_t), cudaHostAllocMapped); 
-    //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for indexing numbers. Error: %d\n", ret); exit(-1); }
+    //uint32_t * indexing_numbers = (uint32_t *) malloc(max_hits*sizeof(uint32_t));
+    uint32_t * indexing_numbers;
+    ret = cudaHostAlloc(&indexing_numbers, max_hits * sizeof(uint32_t), cudaHostAllocMapped); 
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for indexing numbers. Error: %d\n", ret); exit(-1); }
     
-    if(hits == NULL) { fprintf(stderr, "Allocating for hits download. Error: %d\n", ret); exit(-1); }
+    //if(hits == NULL) { fprintf(stderr, "Allocating for hits download. Error: %d\n", ret); exit(-1); }
 
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -385,9 +424,9 @@ int main(int argc, char ** argv)
         
 
         // Download sorted kmers
-        ret = cudaMemcpy(dict_x_keys, keys_buf, items_read_x*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+        ret = cudaMemcpyAsync(dict_x_keys, keys_buf, items_read_x*sizeof(uint64_t), cudaMemcpyDeviceToHost, 0);
         if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (1). Error: %d\n", ret); exit(-1); }
-        ret = cudaMemcpy(dict_x_values, values_buf, items_read_x*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+        ret = cudaMemcpyAsync(dict_x_values, values_buf, items_read_x*sizeof(uint32_t), cudaMemcpyDeviceToHost);
         if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (2). Error: %d\n", ret); exit(-1); }
 
         // Print hits for debug
@@ -919,6 +958,7 @@ int main(int argc, char ** argv)
     fclose(query);
     fclose(ref);
 
+    /*
     free(query_seq_host);
     free(ref_seq_host);
     free(ref_rev_seq_host);
@@ -934,8 +974,8 @@ int main(int argc, char ** argv)
     free(diagonals); 
     free(ascending_numbers); 
     free(indexing_numbers); 
-
-    /*
+    */
+    
     cudaFreeHost(query_seq_host);
     cudaFreeHost(ref_seq_host);
     cudaFreeHost(ref_rev_seq_host);
@@ -951,7 +991,7 @@ int main(int argc, char ** argv)
     cudaFreeHost(diagonals); 
     cudaFreeHost(ascending_numbers); 
     cudaFreeHost(indexing_numbers); 
-    */
+    
 
     return 0;
 }
