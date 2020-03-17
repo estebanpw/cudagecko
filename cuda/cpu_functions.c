@@ -618,3 +618,12 @@ void Qsort(uint64_t * keys, uint64_t * values, int64_t x, int64_t y) {
     if (x<y1) Qsort(keys, values, x, y1);
     if (x1<y) Qsort(keys, values, x1, y);
 } 
+
+uint32_t realign_address(uint32_t address, uint32_t align)
+{
+
+    if(address % align == 0) return address;
+
+    return address + align - (address % align);
+
+}

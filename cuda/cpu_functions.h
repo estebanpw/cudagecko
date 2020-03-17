@@ -17,3 +17,4 @@ uint32_t load_seq(FILE * f, char * seq);
 uint32_t get_seq_len(FILE * f);
 void terror(const char * s);
 void Qsort(uint64_t * keys, uint64_t * values, int64_t x, int64_t y);
+uint32_t realign_address(uint32_t address, uint32_t align);
