@@ -422,6 +422,33 @@ __global__ void kernel_index_global32(uint64_t * hashes, uint32_t * positions, c
 	positions[threadIdx.x + blockIdx.x * blockDim.x] = (threadIdx.x + blockIdx.x * blockDim.x + offset) | (~bad);
 }
 
+__global__ void kernel_index_global_shared(uint64_t * hashes, uint32_t * positions, const char * sequence, uint32_t offset) {
+		
+
+	uint64_t k, hash = 0;
+		
+	uint64_t bad = 0xFFFFFFFFFFFFFFFF;
+
+	for(k=0; k<blockDim.x; k++){
+
+		char c = sequence[threadIdx.x + k + blockIdx.x * blockDim.x];
+		//if(threadIdx.x == 0) printf("%c", c);
+		//char c = sequence[0];
+
+		if(c == 'A') hash += 0;
+		if(c == 'C') hash += pow4[k];
+		if(c == 'G') hash += pow4_G[k];
+		if(c == 'T') hash += pow4_T[k];
+		if(c == 'N') bad = 0;
+		
+	}
+
+	// [0 - 32] * [0-N]* [32]
+	hashes[threadIdx.x + blockIdx.x * blockDim.x] = hash & bad;
+	//hashes[0] = hash & bad;
+	positions[threadIdx.x + blockIdx.x * blockDim.x] = (threadIdx.x + blockIdx.x * blockDim.x + offset) | (~bad);
+}
+
 __global__ void kernel_reverse_complement(const char * sequence, char * reverse_sequence, uint32_t seq_len) {
 	
 	//uint64_t id = (31 - threadIdx.x) + blockIdx.x * blockDim.x;
@@ -441,4 +468,27 @@ __global__ void kernel_reverse_complement(const char * sequence, char * reverse_
 
 		reverse_sequence[lookup] = complement;
 	}
+}
+
+__global__ void kernel_generate_hits(uint64_t * hash_x, uint64_t * hash_y, uint32_t * pos_x, uint32_t * pos_y, uint64_t * diagonals, ph_Hit * h) {
+
+	uint32_t id_x = threadIdx.x;
+	uint32_t offset = 0;
+	uint32_t id_y = 0;
+
+	while (hash_x[offset] <= hash_y[id_y])
+	{
+		if (hash_x[id_x] == hash_y[id_y] && pos_x[id_x] != 0xFFFFFFFF && pos_y[id_y] != 0xFFFFFFFF)
+		{
+
+			/*
+			h[n_hits_found].p1 = values_x[id_x];
+			h[n_hits_found].p2 = values_y[curr_id_y];
+			diagonals[n_hits_found] =  ((diff_offset + (uint64_t) values_x[id_x]) - (uint64_t) values_y[curr_id_y]) * diag_len + (diff_offset + (uint64_t) values_x[id_x]);
+			*/
+
+		}
+
+	}
+	
 }
