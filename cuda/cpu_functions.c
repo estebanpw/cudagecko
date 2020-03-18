@@ -619,7 +619,7 @@ void Qsort(uint64_t * keys, uint64_t * values, int64_t x, int64_t y) {
     if (x1<y) Qsort(keys, values, x1, y);
 } 
 
-uint32_t realign_address(uint32_t address, uint32_t align)
+uint64_t realign_address(uint64_t address, uint64_t align)
 {
 
     if(address % align == 0) return address;

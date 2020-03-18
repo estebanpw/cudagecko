@@ -29,8 +29,7 @@ int main(int argc, char ** argv)
 
     int ret_num_devices;
     //unsigned compute_units;
-    uint32_t local_device_RAM, global_device_RAM;
-    int work_group_dimensions[3];
+    uint64_t global_device_RAM;
     //int work_group_size_local;
     int ret;
     
@@ -44,14 +43,11 @@ int main(int argc, char ** argv)
 
         fprintf(stdout, "\tDevice [%"PRIu32"]: %s\n", i, device.name);
         global_device_RAM = device.totalGlobalMem;
-        fprintf(stdout, "\t\tGlobal mem   : %"PRIu32" (%"PRIu32" MB)\n", (uint32_t) global_device_RAM, (uint32_t) global_device_RAM / (1024*1024));
-        local_device_RAM = device.sharedMemPerBlock;
-        //fprintf(stdout, "\t\tLocal mem    : %"PRIu64" (%"PRIu64" KB)\n", (uint64_t) local_device_RAM, (uint64_t) local_device_RAM / (1024));
+        fprintf(stdout, "\t\tGlobal mem   : %"PRIu64" (%"PRIu64" MB)\n", global_device_RAM, global_device_RAM / (1024*1024));
         //compute_units = device.multiProcessorCount;
         //fprintf(stdout, "\t\tCompute units: %"PRIu64"\n", (uint64_t) compute_units);
         //work_group_size_local = device.maxThreadsPerBlock;
         //fprintf(stdout, "\t\tMax work group size: %d\n", work_group_size_local);
-        memcpy(work_group_dimensions, device.maxThreadsDim, 3*sizeof(int));
         //fprintf(stdout, "\t\tWork size dimensions: (%d, %d, %d)\n", work_group_dimensions[0], work_group_dimensions[1], work_group_dimensions[2]);
         //fprintf(stdout, "\t\tWarp size: %d\n", device.warpSize);
         //fprintf(stdout, "\t\tGrid dimensions: (%d, %d, %d)\n", device.maxGridSize[0], device.maxGridSize[1], device.maxGridSize[2]);
@@ -144,14 +140,41 @@ int main(int argc, char ** argv)
     //char * ref_seq_host = (char *) malloc(ref_len * sizeof(char));
     //char * ref_rev_seq_host = (char *) malloc(ref_len * sizeof(char));
 
+    // How about one big alloc (save ~3 seconds on mallocs)
+    char * host_pinned_mem, * base_ptr_pinned;
     
+    uint64_t pinned_bytes_on_host = words_at_once * (sizeof(uint64_t) * (2) + sizeof(uint32_t) * (2));
+    pinned_bytes_on_host = pinned_bytes_on_host + max_hits * (sizeof(uint64_t) * (1) + sizeof(uint32_t) * (8));
+    pinned_bytes_on_host = pinned_bytes_on_host + sizeof(char) * (query_len + 2*ref_len);
+    pinned_bytes_on_host += 1024*1024; // Adding 1 MB for the extra padding in the realignments
+    uint64_t pinned_address_checker = 0;
+
+
+    fprintf(stdout, "[INFO] Allocating on host %"PRIu64" bytes (i.e. %"PRIu64" MBs)\n", pinned_bytes_on_host, pinned_bytes_on_host / (1024*1024));
+    ret = cudaHostAlloc(&host_pinned_mem, pinned_bytes_on_host, cudaHostAllocMapped); 
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for pool. Error: %d\n", ret); exit(-1); }
+    
+
     char * query_seq_host, * ref_seq_host, * ref_rev_seq_host;
-    ret = cudaHostAlloc(&query_seq_host, query_len * sizeof(char), cudaHostAllocMapped); 
-    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for query_seq host. Error: %d\n", ret); exit(-1); }
-    ret = cudaHostAlloc(&ref_seq_host, ref_len * sizeof(char), cudaHostAllocMapped); 
-    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for ref_seq host. Error: %d\n", ret); exit(-1); }
-    ret = cudaHostAlloc(&ref_rev_seq_host, ref_len * sizeof(char), cudaHostAllocMapped); 
-    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for reverse ref_seq host. Error: %d\n", ret); exit(-1); }
+    base_ptr_pinned = (char *) &host_pinned_mem[0];
+    query_seq_host = (char *) &host_pinned_mem[0];
+    pinned_address_checker = realign_address(pinned_address_checker + query_len, 4);
+
+    ref_seq_host = (char *) (base_ptr_pinned + pinned_address_checker);
+    pinned_address_checker = realign_address(pinned_address_checker + ref_len, 4);
+
+    ref_rev_seq_host = (char *) (base_ptr_pinned + pinned_address_checker);
+    pinned_address_checker = realign_address(pinned_address_checker + ref_len, 4);
+    
+
+
+    
+    //ret = cudaHostAlloc(&query_seq_host, query_len * sizeof(char), cudaHostAllocMapped); 
+    //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for query_seq host. Error: %d\n", ret); exit(-1); }
+    //ret = cudaHostAlloc(&ref_seq_host, ref_len * sizeof(char), cudaHostAllocMapped); 
+    //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for ref_seq host. Error: %d\n", ret); exit(-1); }
+    //ret = cudaHostAlloc(&ref_rev_seq_host, ref_len * sizeof(char), cudaHostAllocMapped); 
+    //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for reverse ref_seq host. Error: %d\n", ret); exit(-1); }
     
 
     
@@ -189,7 +212,7 @@ int main(int argc, char ** argv)
 
     // ## POINTER SECTION 0
     // ref_len * sizeof(char) -> seq_dev_mem_aux
-    uint32_t address_checker = 0;
+    uint64_t address_checker = 0;
     char * ptr_seq_dev_mem_aux = &data_mem[0];
     // ref_len * sizeof(char)) -> seq_dev_mem_reverse_aux
     char * ptr_seq_dev_mem_reverse_aux = &data_mem[ref_len];
@@ -264,10 +287,31 @@ int main(int argc, char ** argv)
 
 
     // Allocate memory in host to download kmers and store hits
+    
     uint64_t * dict_x_keys, * dict_y_keys; // Keys are hashes (64-b), values are positions (32)
     uint32_t * dict_x_values, * dict_y_values;
 
+    pinned_address_checker = realign_address(pinned_address_checker, 8);
+    dict_x_keys = (uint64_t *) (base_ptr_pinned + pinned_address_checker);
+    pinned_address_checker = realign_address(pinned_address_checker + words_at_once * sizeof(uint64_t), 4);
+
+    dict_x_values = (uint32_t *) (base_ptr_pinned + pinned_address_checker);
+    pinned_address_checker = realign_address(pinned_address_checker + words_at_once * sizeof(uint32_t), 8);
+
+    dict_y_keys = (uint64_t *) (base_ptr_pinned + pinned_address_checker);
+    pinned_address_checker = realign_address(pinned_address_checker + words_at_once * sizeof(uint64_t), 4);
+
+    dict_y_values = (uint32_t *) (base_ptr_pinned + pinned_address_checker);
+    pinned_address_checker = realign_address(pinned_address_checker + words_at_once * sizeof(uint32_t), 4);
+
+    // CONTINUE HERE
+    // REMEMBER ===================
+    // YOU THINK SOME POINTER ALLOCATION IN THE GPU IS WRONG BECAUSE 
+    // YOU ARE NOT ADDING UP THE SHIFTS IN REALIGNMENTS
+
+
     // These depends on the number of words
+    /*
     //dict_x_keys = (uint64_t *) malloc(words_at_once*sizeof(uint64_t));
     ret = cudaHostAlloc(&dict_x_keys, words_at_once * sizeof(uint64_t), cudaHostAllocMapped); 
     if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for dict_x_keys. Error: %d\n", ret); exit(-1); }
@@ -282,8 +326,15 @@ int main(int argc, char ** argv)
     ret = cudaHostAlloc(&dict_y_values, words_at_once * sizeof(uint32_t), cudaHostAllocMapped); 
     if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for dict_y_values. Error: %d\n", ret); exit(-1); }
     //if(dict_y_keys == NULL || dict_y_values == NULL) { fprintf(stderr, "Allocating for kmer download in ref. Error: %d\n", ret); exit(-1); }
+    */
 
+    
+
+    
     // These are now depending on the number of hits
+    Hit * hits;
+    uint32_t * filtered_hits_x, * filtered_hits_y;
+    /*
     //Hit * hits = (Hit *) malloc(max_hits*sizeof(Hit));
     Hit * hits;
     ret = cudaHostAlloc(&hits, max_hits * sizeof(Hit), cudaHostAllocMapped); 
@@ -298,7 +349,22 @@ int main(int argc, char ** argv)
     uint32_t * filtered_hits_y;
     ret = cudaHostAlloc(&filtered_hits_y, max_hits * sizeof(uint32_t), cudaHostAllocMapped); 
     if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for filtered_hits_y. Error: %d\n", ret); exit(-1); }
+    */
 
+    pinned_address_checker = realign_address(pinned_address_checker, 8);
+    hits = (Hit *) (base_ptr_pinned + pinned_address_checker);
+    pinned_address_checker = realign_address(pinned_address_checker + max_hits * sizeof(Hit), 4);
+
+    filtered_hits_x = (uint32_t *) (base_ptr_pinned + pinned_address_checker);
+    pinned_address_checker = realign_address(pinned_address_checker + max_hits * sizeof(uint32_t), 4);
+
+    filtered_hits_y = (uint32_t *) (base_ptr_pinned + pinned_address_checker);
+    pinned_address_checker = realign_address(pinned_address_checker + max_hits * sizeof(uint32_t), 4);
+
+
+    uint32_t * host_left_offset,  * host_right_offset, * ascending_numbers, * indexing_numbers;
+    uint64_t * diagonals;
+    /*
     // These are for the device
     uint32_t * device_filt_hits_x, * device_filt_hits_y, * left_offset, * right_offset;
 
@@ -320,8 +386,8 @@ int main(int argc, char ** argv)
     ret = cudaHostAlloc(&diagonals, max_hits * sizeof(uint64_t), cudaHostAllocMapped); 
     if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for diagonals. Error: %d\n", ret); exit(-1); }
 
-    uint64_t * device_diagonals, * device_diagonals_buf;
-    uint32_t * device_hits, * device_hits_buf; // These will actually be just indices to redirect the hits sorting
+    //uint64_t * device_diagonals, * device_diagonals_buf;
+    //uint32_t * device_hits, * device_hits_buf; // These will actually be just indices to redirect the hits sorting
 
     //uint32_t * ascending_numbers = (uint32_t *) malloc(max_hits*sizeof(uint32_t)); for(i=0; i<max_hits; i++) ascending_numbers[i] = i;
     uint32_t * ascending_numbers;
@@ -335,6 +401,25 @@ int main(int argc, char ** argv)
     if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for indexing numbers. Error: %d\n", ret); exit(-1); }
     
     //if(hits == NULL) { fprintf(stderr, "Allocating for hits download. Error: %d\n", ret); exit(-1); }
+    */
+
+    pinned_address_checker = realign_address(pinned_address_checker, 4);
+    host_left_offset = (uint32_t *) (base_ptr_pinned + pinned_address_checker);
+    pinned_address_checker = realign_address(pinned_address_checker + max_hits * sizeof(uint32_t), 4);
+
+    host_right_offset = (uint32_t *) (base_ptr_pinned + pinned_address_checker);
+    pinned_address_checker = realign_address(pinned_address_checker + max_hits * sizeof(uint32_t), 8);
+
+    diagonals = (uint64_t *) (base_ptr_pinned + pinned_address_checker);
+    pinned_address_checker = realign_address(pinned_address_checker + max_hits * sizeof(uint64_t), 4);
+
+    ascending_numbers = (uint32_t *) (base_ptr_pinned + pinned_address_checker);
+    pinned_address_checker = realign_address(pinned_address_checker + max_hits * sizeof(uint32_t), 4);
+    for(i=0; i<max_hits; i++) ascending_numbers[i] = i;
+
+    indexing_numbers = (uint32_t *) (base_ptr_pinned + pinned_address_checker);
+    pinned_address_checker = realign_address(pinned_address_checker + max_hits * sizeof(uint32_t), 4);
+
 
     
     //printf("ALOHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA------------------------ remove thisssssssssssssssssssssssssssssssssssssssssss\n");
@@ -375,11 +460,13 @@ int main(int argc, char ** argv)
         // ## POINTER SECTION 1
         char * ptr_seq_dev_mem = &data_mem[0];
         char * base_ptr = ptr_seq_dev_mem;
-        address_checker += words_at_once;
-        uint64_t * ptr_keys = (uint64_t *) (base_ptr + realign_address(address_checker, 8)); // We have to realign because of the arbitrary length of the sequence chars
-        address_checker += words_at_once * sizeof(uint64_t);
-        uint32_t * ptr_values = (uint32_t *) (base_ptr + realign_address(address_checker, 4)); 
-        address_checker += words_at_once * sizeof(uint32_t);
+        address_checker = realign_address(address_checker + words_at_once, 8);
+        
+        uint64_t * ptr_keys = (uint64_t *) (base_ptr + address_checker); // We have to realign because of the arbitrary length of the sequence chars
+        address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
+
+        uint32_t * ptr_values = (uint32_t *) (base_ptr + address_checker); 
+        address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
         
 
         fprintf(stdout, "[EXECUTING] Running split %d -> (%d%%)\n", split, (int)((100*pos_in_query)/query_len));
@@ -446,10 +533,12 @@ int main(int argc, char ** argv)
 
         // ## POINTER SECTION 2
         
-        uint64_t * ptr_keys_buf = (uint64_t *) (base_ptr + realign_address(address_checker, 8));
-        address_checker += words_at_once * sizeof(uint64_t);
-        uint32_t * ptr_values_buf = (uint32_t *) (base_ptr + realign_address(address_checker, 4)); // Each alloc adds on top of the previous one
-        address_checker += words_at_once * sizeof(uint32_t);
+        address_checker = realign_address(address_checker, 8);
+        uint64_t * ptr_keys_buf = (uint64_t *) (base_ptr + address_checker);
+        address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
+
+        uint32_t * ptr_values_buf = (uint32_t *) (base_ptr + address_checker); // Each alloc adds on top of the previous one
+        address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
 
         //cub::DoubleBuffer<uint64_t> d_keys(keys, keys_buf);
         //cub::DoubleBuffer<uint32_t> d_values(values, values_buf);
@@ -533,11 +622,13 @@ int main(int argc, char ** argv)
             // ## POINTER SECTION 3
             ptr_seq_dev_mem = &data_mem[0];
             base_ptr = ptr_seq_dev_mem;
-            address_checker = words_at_once;
-            ptr_keys = (uint64_t *) (base_ptr + realign_address(address_checker, 8)); // We have to realign because of the arbitrary length of the sequence chars
-            address_checker += words_at_once * sizeof(uint64_t);
-            ptr_values = (uint32_t *) (base_ptr + realign_address(address_checker, 4));
-            address_checker += words_at_once * sizeof(uint32_t);
+            address_checker = realign_address(words_at_once, 8);
+
+            ptr_keys = (uint64_t *) (base_ptr + address_checker); // We have to realign because of the arbitrary length of the sequence chars
+            address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
+
+            ptr_values = (uint32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
             
 
             // Load sequence chunk into ram
@@ -570,10 +661,12 @@ int main(int argc, char ** argv)
 
             // ## POINTER SECTION 4
         
-            ptr_keys_buf = (uint64_t *) (base_ptr + realign_address(address_checker, 8));
-            address_checker += words_at_once * sizeof(uint64_t);
-            ptr_values_buf = (uint32_t *) (base_ptr + realign_address(address_checker, 4)); // Each alloc adds on top of the previous one
-            address_checker += words_at_once * sizeof(uint32_t);
+            address_checker = realign_address(address_checker, 8);
+            ptr_keys_buf = (uint64_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
+
+            ptr_values_buf = (uint32_t *) (base_ptr + address_checker); // Each alloc adds on top of the previous one
+            address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
 
             ret = cudaMemset(ptr_keys_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
             ret = cudaMemset(ptr_values_buf, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
@@ -637,8 +730,8 @@ int main(int argc, char ** argv)
             fprintf(stdout, "[INFO] Generated %"PRIu32" hits on split %d -> (%d%%) (position in REF: %"PRIu32")\n", n_hits_found, split, (int)((100*MIN(pos_in_ref, ref_len))/ref_len), pos_in_ref);
 
             // Print hits for debug
-            //for(i=0; i<items_read_y; i++){
-                //fprintf(out, "%"PRIu64"\n", dict_x_values[i]);
+            //for(i=0; i<n_hits_found; i++){
+            //    fprintf(stdout, "%"PRIu32"\n", dict_x_values[i]);
             //}
             //for(i=0; i<n_hits_found; i++){
                 //printf("%"PRIu64"\n", diagonals[i]);
@@ -665,14 +758,18 @@ int main(int argc, char ** argv)
 
             address_checker = 0;
             base_ptr = &data_mem[0];
-            uint64_t * ptr_device_diagonals = (uint64_t *) (base_ptr + realign_address(address_checker, 8));
-            address_checker += max_hits * sizeof(uint64_t);
-            uint64_t * ptr_device_diagonals_buf = (uint64_t *) (base_ptr + realign_address(address_checker, 8));
-            address_checker += max_hits * sizeof(uint64_t);
-            uint32_t * ptr_device_hits = (uint32_t *) (base_ptr + realign_address(address_checker, 4));
-            address_checker += max_hits * sizeof(uint32_t);
-            uint32_t * ptr_device_hits_buf = (uint32_t *) (base_ptr + realign_address(address_checker, 4));
-            address_checker += max_hits * sizeof(uint32_t);
+            address_checker = realign_address(address_checker, 8);
+            uint64_t * ptr_device_diagonals = (uint64_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint64_t), 8);
+
+            uint64_t * ptr_device_diagonals_buf = (uint64_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint64_t), 4);
+
+            uint32_t * ptr_device_hits = (uint32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
+
+            uint32_t * ptr_device_hits_buf = (uint32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
             
 
             // We will actually sort the diagonals with associated values 0,1,2... to n and use these to index the hits array
@@ -706,6 +803,10 @@ int main(int argc, char ** argv)
             ret = cudaMemcpy(diagonals, ptr_device_diagonals_buf, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
 
+            //
+            //for(i=0; i<n_hits_found; i++){
+            //    fprintf(stdout, "%"PRIu32" %"PRIu32"\n", hits[indexing_numbers[i]].p1, hits[indexing_numbers[i]].p2);
+            //}
 
             uint32_t n_hits_kept = filter_hits_forward(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
 
@@ -744,16 +845,21 @@ int main(int argc, char ** argv)
             base_ptr = &data_mem[0];
             ptr_seq_dev_mem = (char *) (base_ptr);
             address_checker += words_at_once;
+
             ptr_seq_dev_mem_aux = (char *) (base_ptr + address_checker);
-            address_checker += words_at_once;
-            uint32_t * ptr_device_filt_hits_x = (uint32_t *) (base_ptr + realign_address(address_checker, 4));
-            address_checker += max_hits * sizeof(uint32_t);
-            uint32_t * ptr_device_filt_hits_y = (uint32_t *) (base_ptr + realign_address(address_checker, 4));
-            address_checker += max_hits * sizeof(uint32_t);
-            uint32_t * ptr_left_offset = (uint32_t *) (base_ptr + realign_address(address_checker, 4));
-            address_checker += max_hits * sizeof(uint32_t);
-            uint32_t * ptr_right_offset = (uint32_t *) (base_ptr + realign_address(address_checker, 4));
-            address_checker += max_hits * sizeof(uint32_t);
+            address_checker = realign_address(address_checker + words_at_once, 4);
+
+            uint32_t * ptr_device_filt_hits_x = (uint32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
+
+            uint32_t * ptr_device_filt_hits_y = (uint32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
+
+            uint32_t * ptr_left_offset = (uint32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
+
+            uint32_t * ptr_right_offset = (uint32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
 
 
 
@@ -841,11 +947,13 @@ int main(int argc, char ** argv)
             address_checker = 0;
             base_ptr = &data_mem[0];
             ptr_seq_dev_mem = (char *) (base_ptr);
-            address_checker += words_at_once;
-            ptr_keys = (uint64_t *) (base_ptr + realign_address(address_checker, 8));
-            address_checker += words_at_once * sizeof(uint64_t);
-            ptr_values = (uint32_t *) (base_ptr + realign_address(address_checker, 4));
-            address_checker += words_at_once * sizeof(uint32_t);
+            address_checker = realign_address(address_checker + words_at_once, 8);
+
+            ptr_keys = (uint64_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
+
+            ptr_values = (uint32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
 
 
             // Load sequence chunk into ram
@@ -875,10 +983,12 @@ int main(int argc, char ** argv)
 
             // ## POINTER SECTION 8
 
-            ptr_keys_buf = (uint64_t *) (base_ptr + realign_address(address_checker, 8));
-            address_checker += words_at_once * sizeof(uint64_t);
-            ptr_values_buf = (uint32_t *) (base_ptr + realign_address(address_checker, 4));
-            address_checker += words_at_once * sizeof(uint32_t);
+            address_checker = realign_address(address_checker, 8);
+            ptr_keys_buf = (uint64_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
+
+            ptr_values_buf = (uint32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
 
             ret = cudaMemset(ptr_keys_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
             ret = cudaMemset(ptr_values_buf, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
@@ -946,14 +1056,18 @@ int main(int argc, char ** argv)
 
             base_ptr = &data_mem[0];
             address_checker = 0;
-            uint64_t * ptr_device_diagonals = (uint64_t *) (base_ptr + realign_address(address_checker, 8));
-            address_checker += max_hits * sizeof(uint64_t);
-            uint64_t * ptr_device_diagonals_buf = (uint64_t *) (base_ptr + realign_address(address_checker, 8));
-            address_checker += max_hits * sizeof(uint64_t);
-            uint32_t * ptr_device_hits = (uint32_t *) (base_ptr + realign_address(address_checker, 4));
-            address_checker += max_hits * sizeof(uint32_t);
-            uint32_t * ptr_device_hits_buf = (uint32_t *) (base_ptr + realign_address(address_checker, 4));
-            address_checker += max_hits * sizeof(uint32_t);
+            address_checker = realign_address(address_checker, 8);
+            uint64_t * ptr_device_diagonals = (uint64_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint64_t), 8);
+
+            uint64_t * ptr_device_diagonals_buf = (uint64_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint64_t), 4);
+
+            uint32_t * ptr_device_hits = (uint32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
+
+            uint32_t * ptr_device_hits_buf = (uint32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
 
             // We will actually sort the diagonals with associated values 0,1,2... to n and use these to index the hits array
             ret = cudaMemcpy(ptr_device_hits, ascending_numbers, n_hits_found*sizeof(uint32_t), cudaMemcpyHostToDevice);
@@ -1037,16 +1151,21 @@ int main(int argc, char ** argv)
             base_ptr = &data_mem[0];
             ptr_seq_dev_mem = (char *) (base_ptr);
             address_checker += words_at_once;
+
             ptr_seq_dev_mem_aux = (char *) (base_ptr + address_checker);
-            address_checker += words_at_once;
-            uint32_t * ptr_device_filt_hits_x = (uint32_t *) (base_ptr + realign_address(address_checker, 4));
-            address_checker += max_hits * sizeof(uint32_t);
-            uint32_t * ptr_device_filt_hits_y = (uint32_t *) (base_ptr + realign_address(address_checker, 4));
-            address_checker += max_hits * sizeof(uint32_t);
-            uint32_t * ptr_left_offset = (uint32_t *) (base_ptr + realign_address(address_checker, 4));
-            address_checker += max_hits * sizeof(uint32_t);
-            uint32_t * ptr_right_offset = (uint32_t *) (base_ptr + realign_address(address_checker, 4));
-            address_checker += max_hits * sizeof(uint32_t);
+            address_checker = realign_address(address_checker + words_at_once, 4);
+
+            uint32_t * ptr_device_filt_hits_x = (uint32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
+
+            uint32_t * ptr_device_filt_hits_y = (uint32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
+
+            uint32_t * ptr_left_offset = (uint32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
+
+            uint32_t * ptr_right_offset = (uint32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
 
 
             ret = cudaMemcpy(ptr_seq_dev_mem, &query_seq_host[pos_in_query-words_at_once], MIN(query_len - (pos_in_query - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy query sequence to device for frags. Error: %d\n", ret); exit(-1); }
@@ -1142,7 +1261,8 @@ int main(int argc, char ** argv)
     */
 
     cudaFree(data_mem);
-
+    cudaFreeHost(host_pinned_mem);
+    /*
     cudaFreeHost(query_seq_host);
     cudaFreeHost(ref_seq_host);
     cudaFreeHost(ref_rev_seq_host);
@@ -1158,7 +1278,7 @@ int main(int argc, char ** argv)
     cudaFreeHost(diagonals); 
     cudaFreeHost(ascending_numbers); 
     cudaFreeHost(indexing_numbers); 
-    
+    */
 
     return 0;
 }
