@@ -18,5 +18,3 @@ __global__ void kernel_register_fast_hash_rotational(uint64_t * hashes, uint64_t
 __global__ void kernel_index_global32(uint64_t * hashes, uint32_t * positions, const char * sequence, uint32_t offset);
 
 __global__ void kernel_reverse_complement(const char * sequence, char * reverse_sequence, uint32_t seq_len);
-
-__global__ void kernel_reverse_complement_async(const char * sequence, char * reverse_sequence, uint32_t seq_len);
