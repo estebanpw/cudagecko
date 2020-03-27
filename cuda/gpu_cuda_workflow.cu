@@ -308,6 +308,7 @@ int main(int argc, char ** argv)
     // REMEMBER ===================
     // YOU THINK SOME POINTER ALLOCATION IN THE GPU IS WRONG BECAUSE 
     // YOU ARE NOT ADDING UP THE SHIFTS IN REALIGNMENTS
+    // This was fixed
 
 
     // These depends on the number of words

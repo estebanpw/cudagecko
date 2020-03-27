@@ -442,3 +442,5 @@ __global__ void kernel_reverse_complement(const char * sequence, char * reverse_
 		reverse_sequence[lookup] = complement;
 	}
 }
+
+
