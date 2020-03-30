@@ -470,25 +470,3 @@ __global__ void kernel_reverse_complement(const char * sequence, char * reverse_
 	}
 }
 
-__global__ void kernel_generate_hits(uint64_t * hash_x, uint64_t * hash_y, uint32_t * pos_x, uint32_t * pos_y, uint64_t * diagonals, ph_Hit * h) {
-
-	uint32_t id_x = threadIdx.x;
-	uint32_t offset = 0;
-	uint32_t id_y = 0;
-
-	while (hash_x[offset] <= hash_y[id_y])
-	{
-		if (hash_x[id_x] == hash_y[id_y] && pos_x[id_x] != 0xFFFFFFFF && pos_y[id_y] != 0xFFFFFFFF)
-		{
-
-			/*
-			h[n_hits_found].p1 = values_x[id_x];
-			h[n_hits_found].p2 = values_y[curr_id_y];
-			diagonals[n_hits_found] =  ((diff_offset + (uint64_t) values_x[id_x]) - (uint64_t) values_y[curr_id_y]) * diag_len + (diff_offset + (uint64_t) values_x[id_x]);
-			*/
-
-		}
-
-	}
-	
-}

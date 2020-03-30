@@ -26,4 +26,3 @@ __global__ void kernel_index_global32(uint64_t * hashes, uint32_t * positions, c
 
 __global__ void kernel_reverse_complement(const char * sequence, char * reverse_sequence, uint32_t seq_len);
 
-__global__ void kernel_generate_hits(uint64_t * hash_x, uint64_t * hash_y, uint32_t * pos_x, uint32_t * pos_y, uint64_t * diagonals, ph_Hit * h);
