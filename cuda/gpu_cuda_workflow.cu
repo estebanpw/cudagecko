@@ -242,6 +242,8 @@ int main(int argc, char ** argv)
 
     }else{
 
+        number_of_blocks = (ref_len)/threads_number + 1;
+
         //ret = cudaMemcpy(seq_dev_mem_aux, ref_seq_host, ref_len, cudaMemcpyHostToDevice);
         ret = cudaMemcpy(ptr_seq_dev_mem_aux, ref_seq_host, ref_len, cudaMemcpyHostToDevice);
         if(ret != cudaSuccess){ fprintf(stderr, "Could not copy reference sequence to device for reversing. Error: %d\n", ret); exit(-1); }
@@ -469,7 +471,7 @@ int main(int argc, char ** argv)
         address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
         
 
-        fprintf(stdout, "[EXECUTING] Running split %d -> (%d%%)\n", split, (int)((100*(uint64_t)pos_in_query)/(uint64_t)query_len));
+        fprintf(stdout, "[EXECUTING] Running split %d -> (%d%%)[%u,%u]\n", split, (int)((100*(uint64_t)pos_in_query)/(uint64_t)query_len), pos_in_query, pos_in_ref);
 
         uint32_t items_read_x = MIN(query_len - pos_in_query, words_at_once);
 
@@ -734,7 +736,7 @@ int main(int argc, char ** argv)
             else
                 n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency);
             
-            fprintf(stdout, "[INFO] Generated %"PRIu32" hits on split %d -> (%d%%)\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len));
+            fprintf(stdout, "[INFO] Generated %"PRIu32" hits on split %d -> (%d%%)[%u,%u]{%u,%u}\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len), pos_in_query, pos_in_ref, items_read_x, items_read_y);
 
             // Print hits for debug
             //for(i=0; i<n_hits_found; i++){
@@ -1049,7 +1051,11 @@ int main(int argc, char ** argv)
             else
                 n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency);
             
-            fprintf(stdout, "[INFO] Generated %"PRIu32" hits on reversed split %d -> (%d%%)\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len));
+            fprintf(stdout, "[INFO] Generated %"PRIu32" hits on reversed split %d -> (%d%%)[%u,%u]{%u,%u}\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len), pos_in_query, pos_in_ref, items_read_x, items_read_y);
+
+
+            //printf("VALHALA 1\n");
+            //continue;
 
             ////////////////////////////////////////////////////////////////////////////////
             // Sort hits for the current split BUT REVERSED !
@@ -1116,6 +1122,8 @@ int main(int argc, char ** argv)
 
             fprintf(stdout, "[INFO] Remaining hits %"PRIu32"\n", n_hits_kept);
 
+            //printf("VALHALA 2\n");
+            //continue;
             
 
             // Filtered hits are in order to diagonal (x-y)*l + x (PROVED)
@@ -1194,11 +1202,20 @@ int main(int argc, char ** argv)
             //    printf(" \t\t y: %.32s %"PRIu64"\n", &ref_seq_host[filtered_hits_y[i]], filtered_hits_y[i]);
             //}
 
+            //printf("VALHALA 3\n");
+            //continue;
+
+
             number_of_blocks = n_hits_kept; 
+            //number_of_blocks = 100; 
+            //printf("sending blocks: %u\n", number_of_blocks);
+            //printf("We are sending: posinquery-wo=%u posinref-wo=%u MIN1=%u MIN2=%u\n", pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len));
+
             //number_of_blocks = 20; // REMOVE !!
             kernel_frags_reverse_register<<<number_of_blocks, threads_number>>>(ptr_device_filt_hits_x, ptr_device_filt_hits_y, ptr_left_offset, ptr_right_offset, ptr_seq_dev_mem, ptr_seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len));
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Failed on generating forward frags. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+
 
             ret = cudaMemcpy(host_left_offset, ptr_left_offset, n_hits_kept * sizeof(uint32_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back left offset. Error: %d\n", ret); exit(-1); }
             ret = cudaMemcpy(host_right_offset, ptr_right_offset, n_hits_kept * sizeof(uint32_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back right offset. Error: %d\n", ret); exit(-1); }
@@ -1231,6 +1248,9 @@ int main(int argc, char ** argv)
             //cudaFree(right_offset);
 
             
+            //printf("VALHALA 4\n");
+            //continue;
+
             filter_and_write_frags(filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, n_hits_kept, out, 'r', ref_len, min_length);
 
 
