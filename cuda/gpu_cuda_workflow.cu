@@ -498,7 +498,6 @@ int main(int argc, char ** argv)
     
         number_of_blocks = (items_read_x - KMER_SIZE + 1)/(64);
 
-        printf("KERNEL: %zu %zu -index query\n", number_of_blocks, 64);
 
         if(number_of_blocks != 0)
         {
@@ -655,7 +654,6 @@ int main(int argc, char ** argv)
             //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
             
             number_of_blocks = ((items_read_y - KMER_SIZE + 1))/(64);
-            printf("KERNEL: %zu %zu -index ref\n", number_of_blocks, 64);
             if(number_of_blocks != 0)
             {
 
@@ -902,7 +900,6 @@ int main(int argc, char ** argv)
 
             number_of_blocks = n_hits_kept; 
             //number_of_blocks = 20; // REMOVE !!
-            printf("KERNEL: %zu %zu -frags froward\n", number_of_blocks, threads_number);
 
             if(number_of_blocks != 0)
             {
@@ -995,7 +992,6 @@ int main(int argc, char ** argv)
             //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
             
             number_of_blocks = ((items_read_y - KMER_SIZE + 1))/64;
-            printf("KERNEL: %zu %zu -index rev\n", number_of_blocks, 64);
 
             if(number_of_blocks != 0)
             {
@@ -1236,7 +1232,6 @@ int main(int argc, char ** argv)
             //printf("We are sending: posinquery-wo=%u posinref-wo=%u MIN1=%u MIN2=%u\n", pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len));
 
             //number_of_blocks = 20; // REMOVE !!
-            printf("KERNEL: %zu %zu =frags rev\n", number_of_blocks, threads_number);
 
             if(number_of_blocks != 0)
             {
@@ -1245,6 +1240,7 @@ int main(int argc, char ** argv)
                 ret = cudaDeviceSynchronize();
                 if(ret != cudaSuccess){ fprintf(stderr, "Failed on generating forward frags. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             }
+                
 
 
             ret = cudaMemcpy(host_left_offset, ptr_left_offset, n_hits_kept * sizeof(uint32_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back left offset. Error: %d\n", ret); exit(-1); }
