@@ -61,7 +61,6 @@ int main(int argc, char ** argv)
     global_device_RAM = device.totalGlobalMem;
 
     
-    
 
 
     // Calculate how much ram we can use for every chunk
@@ -470,7 +469,7 @@ int main(int argc, char ** argv)
         address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
         
 
-        fprintf(stdout, "[EXECUTING] Running split %d -> (%d%%)\n", split, (int)((100*pos_in_query)/query_len));
+        fprintf(stdout, "[EXECUTING] Running split %d -> (%d%%)\n", split, (int)((100*(uint64_t)pos_in_query)/(uint64_t)query_len));
 
         uint32_t items_read_x = MIN(query_len - pos_in_query, words_at_once);
 
@@ -735,7 +734,7 @@ int main(int argc, char ** argv)
             else
                 n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency);
             
-            fprintf(stdout, "[INFO] Generated %"PRIu32" hits on split %d -> (%d%%) (position in REF: %"PRIu32")\n", n_hits_found, split, (int)((100*MIN(pos_in_ref, ref_len))/ref_len), pos_in_ref);
+            fprintf(stdout, "[INFO] Generated %"PRIu32" hits on split %d -> (%d%%)\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len));
 
             // Print hits for debug
             //for(i=0; i<n_hits_found; i++){
@@ -1050,7 +1049,7 @@ int main(int argc, char ** argv)
             else
                 n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency);
             
-            fprintf(stdout, "[INFO] Generated %"PRIu32" hits on reversed split %d -> (%d%%)\n", n_hits_found, split, (int)((100*MIN(pos_in_ref, ref_len))/ref_len));
+            fprintf(stdout, "[INFO] Generated %"PRIu32" hits on reversed split %d -> (%d%%)\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len));
 
             ////////////////////////////////////////////////////////////////////////////////
             // Sort hits for the current split BUT REVERSED !

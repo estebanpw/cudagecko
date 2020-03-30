@@ -36,7 +36,9 @@ do
                 seqX=${array[$i]}
                 seqY=${array[$j]}
                 echo "[GPU $DEV]: ($curr/$total) ${seqX}-${seqY}"
-                { time $BINDIR/gpu_cuda_workflow -query $DIR/${seqX}.$EXT -ref $DIR/${seqY}.$EXT -dev $DEV -len $LEN >/dev/null; } 2>&1 | grep real | awk '{print $2}'
+                { time $BINDIR/gpu_cuda_workflow -query $DIR/${seqX}.$EXT -ref $DIR/${seqY}.$EXT -dev $DEV -len $LEN >/dev/null 2> errors; } 2>&1 | grep real | awk '{print $2}'
+                cat errors
+
                 curr=`expr $curr + 1`
             
         fi
