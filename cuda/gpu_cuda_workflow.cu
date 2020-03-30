@@ -490,9 +490,12 @@ int main(int argc, char ** argv)
         ret = cudaMemset(ptr_values, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
         
                 
-        number_of_blocks = (items_read_x - KMER_SIZE + 1)/threads_number;
-        //kernel_index_global32<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_query);
-        kernel_index_global32<<<number_of_blocks, threads_number>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_query);
+        //number_of_blocks = (items_read_x - KMER_SIZE + 1)/threads_number;
+        //kernel_index_global32<<<number_of_blocks, threads_number>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_query);
+
+        number_of_blocks = (items_read_x - KMER_SIZE + 1)/(64);
+        kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_query);
+        
         ret = cudaDeviceSynchronize();
         if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on query. Error: %d\n", ret); exit(-1); }
 
@@ -641,8 +644,12 @@ int main(int argc, char ** argv)
             ret = cudaMemset(ptr_values, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
             //number_of_blocks = (((items_read_y - KMER_SIZE + 1)) / (threads_number*4)); 
             //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
-            number_of_blocks = ((items_read_y - KMER_SIZE + 1))/threads_number;
-            kernel_index_global32<<<number_of_blocks, threads_number>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref);
+            
+            number_of_blocks = ((items_read_y - KMER_SIZE + 1))/(64);
+            kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref);
+            
+            //number_of_blocks = ((items_read_y - KMER_SIZE + 1))/threads_number;
+            //kernel_index_global32<<<number_of_blocks, threads_number>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref);
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on ref. Error: %d\n", ret); exit(-1); }
 
@@ -966,8 +973,13 @@ int main(int argc, char ** argv)
             ret = cudaMemset(ptr_values, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
             //number_of_blocks = (((items_read_y - KMER_SIZE + 1)) / (threads_number*4)); 
             //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
-            number_of_blocks = ((items_read_y - KMER_SIZE + 1))/threads_number;
-            kernel_index_global32<<<number_of_blocks, threads_number>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref);
+            
+            number_of_blocks = ((items_read_y - KMER_SIZE + 1))/64;
+            kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref);
+            
+            //number_of_blocks = ((items_read_y - KMER_SIZE + 1))/threads_number;
+            //kernel_index_global32<<<number_of_blocks, threads_number>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref);
+
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on ref reversed. Error: %d\n", ret); exit(-1); }
 
