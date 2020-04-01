@@ -829,6 +829,9 @@ int main(int argc, char ** argv)
             //    fprintf(stdout, "%"PRIu32" %"PRIu32"\n", hits[indexing_numbers[i]].p1, hits[indexing_numbers[i]].p2);
             //}
 
+            memset(filtered_hits_x, 0x0000, n_hits_found * sizeof(uint32_t));
+            memset(filtered_hits_y, 0x0000, n_hits_found * sizeof(uint32_t));
+
             uint32_t n_hits_kept = filter_hits_forward(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
 
             fprintf(stdout, "[INFO] Remaining hits %"PRIu32"\n", n_hits_kept);
@@ -1138,6 +1141,8 @@ int main(int argc, char ** argv)
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
 
 
+            memset(filtered_hits_x, 0x0000, n_hits_found * sizeof(uint32_t));
+            memset(filtered_hits_y, 0x0000, n_hits_found * sizeof(uint32_t));
             uint32_t n_hits_kept = filter_hits_reverse(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
 
             fprintf(stdout, "[INFO] Remaining hits %"PRIu32"\n", n_hits_kept);

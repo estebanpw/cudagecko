@@ -31,12 +31,27 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
 
     build_frag(&xStart, &xEnd, &yStart, &yEnd, &curr_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, current);
 
-    //fprintf(stdout, "I am [%"PRIu64"]: Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64", his hit [%"PRIu64", %"PRIu64"]\n", current, xStart, yStart, xEnd, yEnd, strand, curr_l, filtered_hits_x[current], filtered_hits_y[current]);
 
     uint32_t next_xStart, next_yStart, next_xEnd, next_yEnd, next_l;
 
     uint32_t max_id = 0;
     uint32_t written_frags = 0;
+
+    if(n_frags == 1){
+        if(strand == 'f'){
+
+            uint32_t score = (uint32_t)(curr_l * MIN_P_IDENT);
+            fprintf(out, "Frag,%"PRIu32",%"PRIu32",%"PRIu32",%"PRIu32",%c,0,%"PRIu32",%"PRIu32",%"PRIu32",80.01,80.01,0,0\n", xStart, yStart, xEnd, yEnd, strand, curr_l, score, score);
+        }else{
+            uint32_t best_yStart = ref_len - yStart - 1;
+            uint32_t best_yEnd = ref_len - yEnd - 1;
+            uint32_t score = (uint32_t)(curr_l * MIN_P_IDENT);
+            fprintf(out, "Frag,%"PRIu32",%"PRIu32",%"PRIu32",%"PRIu32",%c,0,%"PRIu32",%"PRIu32",%"PRIu32",80.01,80.01,0,0\n", xStart, best_yStart, xEnd, best_yEnd, strand, curr_l, score, score);
+
+        }
+        ++written_frags;
+    }
+
 
     while(current + 1 < n_frags){
 
@@ -265,6 +280,7 @@ uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * 
     uint64_t current_hits = 0;
     //int64_t last_position_y = -1;
 
+
     uint64_t prev_hash = 0xFFFFFFFFFFFFFFFF, returning_y_pos = 0; // it would be very wierd if the sequence only had TT's
 
     
@@ -275,6 +291,7 @@ uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * 
 
         
         if(keys_x[id_x] == keys_y[id_y] && values_x[id_x] != 0xFFFFFFFF && values_y[id_y] != 0xFFFFFFFF) {
+
 
             uint64_t curr_id_y;
 
@@ -304,7 +321,9 @@ uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * 
         else {
             ++id_y; 
         }
+
     }
+
 
     //printf("Generated %"PRIu64" hits \n", n_hits_found);
     return n_hits_found;
@@ -312,10 +331,18 @@ uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * 
 }
 
 uint32_t filter_hits_forward(uint64_t * diagonals, uint32_t * indexing_numbers, Hit * hits, uint32_t * filtered_hits_x, uint32_t * filtered_hits_y, uint32_t n_hits_found){
-    
+   
+
+ 
     if(n_hits_found == 0) return 0;
     int64_t diagonal = (int64_t) hits[indexing_numbers[0]].p1 - (int64_t) hits[indexing_numbers[0]].p2;
     uint32_t last_position = hits[indexing_numbers[0]].p1, t = 1, t_kept = 0;
+
+    // First hit is saved no matter what
+    filtered_hits_x[t_kept] = hits[indexing_numbers[0]].p1;
+    filtered_hits_y[t_kept] = hits[indexing_numbers[0]].p2;
+    ++t_kept;
+
 
     while (t < (n_hits_found-1)) {
 
@@ -339,6 +366,10 @@ uint32_t filter_hits_reverse(uint64_t * diagonals, uint32_t * indexing_numbers, 
     if(n_hits_found == 0) return 0;
     int64_t diagonal = (int64_t) hits[indexing_numbers[0]].p1 - (int64_t) hits[indexing_numbers[0]].p2;
     uint32_t last_position = hits[indexing_numbers[0]].p1, t = 1, t_kept = 0;
+
+    filtered_hits_x[t_kept] = hits[indexing_numbers[0]].p1;
+    filtered_hits_y[t_kept] = hits[indexing_numbers[0]].p2;
+    ++t_kept;
 
     while (t < (n_hits_found-1)) {
 
