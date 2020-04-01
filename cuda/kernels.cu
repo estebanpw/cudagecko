@@ -59,7 +59,8 @@ __global__ void kernel_frags_forward_register(uint32_t * h_p1, uint32_t * h_p2, 
 		score = score + (int32_t) idents;
         total_idents += (int32_t) idents;
 		score = score - (int32_t) (32 - idents);
-		p_ident = ((100 * total_idents) / (int) (hp1 - warp_pos_x_left));
+		p_ident = ((100 * total_idents) / (int) (hp1 - warp_pos_x_left + 16));
+        //if(threadIdx.x == 0) printf(" yea current pident to left %d positions: [start: %u and moved to %u]\n", p_ident, hp1, warp_pos_x_left);
 		if(score > best_score && p_ident >= MIN_P_IDENT){ best_score = score; best_offset_left = warp_pos_x_left; }
 		
 		
@@ -97,7 +98,8 @@ __global__ void kernel_frags_forward_register(uint32_t * h_p1, uint32_t * h_p2, 
 		score = score + (int32_t) idents;
         total_idents += (int32_t) idents;
 		score = score - (int32_t) (32 - idents);
-		p_ident = (int) ((100 * total_idents) / (int32_t) (warp_pos_x_right - (hp1)));
+		p_ident = (int) ((100 * total_idents) / (int32_t) (warp_pos_x_right - (hp1) + 16));
+        //if(threadIdx.x == 0) printf(" yea current pident to right %d\n", p_ident);
 
 		warp_pos_x_right += 32;
 		warp_pos_y_right += 32; 
@@ -159,7 +161,7 @@ __global__ void kernel_frags_reverse_register(uint32_t * h_p1, uint32_t * h_p2, 
 		score = score + (int32_t) idents;
         total_idents += (int32_t) 32;
 		score = score - (int32_t) (32 - idents);
-		p_ident = ((100 * total_idents) / (int) (hp1 - warp_pos_x_left));
+		p_ident = ((100 * total_idents) / (int) (hp1 - warp_pos_x_left + 16));
 		if(score > best_score && p_ident >= MIN_P_IDENT){ best_score = score; best_offset_left = warp_pos_x_left; }
 		
 		
@@ -199,7 +201,7 @@ __global__ void kernel_frags_reverse_register(uint32_t * h_p1, uint32_t * h_p2, 
 		score = score + (int32_t) idents;
         total_idents += (int32_t) 32;
 		score = score - (int32_t) (32 - idents);
-		p_ident = (int) ((100 * total_idents) / (int32_t) (warp_pos_x_right - (hp1)));
+		p_ident = (int) ((100 * total_idents) / (int32_t) (warp_pos_x_right - (hp1) + 16));
 
 		warp_pos_x_right += 32;
 		warp_pos_y_right += 32; 
