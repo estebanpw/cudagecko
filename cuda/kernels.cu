@@ -30,7 +30,7 @@ __global__ void kernel_frags_forward_register(uint32_t * h_p1, uint32_t * h_p2, 
 	int32_t warp_pos_y_left = (int32_t) h_p2[blockIdx.x];
 	int32_t thre_pos_x, thre_pos_y;
 	uint32_t best_offset_left = (uint32_t) warp_pos_x_left;
-	int32_t score = 32, best_score = 32;
+	int32_t score = 32, best_score = 32, total_idents = 16; // Half of the hit for each side
 	int p_ident = 100;
 	int cell_score;
 	
@@ -57,8 +57,9 @@ __global__ void kernel_frags_forward_register(uint32_t * h_p1, uint32_t * h_p2, 
 		
 		int idents = __shfl_sync(0xFFFFFFFF, cell_score, 0);
 		score = score + (int32_t) idents;
+        total_idents += (int32_t) idents;
 		score = score - (int32_t) (32 - idents);
-		p_ident = ((100 * score) / (int) (hp1 - warp_pos_x_left));
+		p_ident = ((100 * total_idents) / (int) (hp1 - warp_pos_x_left));
 		if(score > best_score && p_ident >= MIN_P_IDENT){ best_score = score; best_offset_left = warp_pos_x_left; }
 		
 		
@@ -73,6 +74,7 @@ __global__ void kernel_frags_forward_register(uint32_t * h_p1, uint32_t * h_p2, 
 	int32_t warp_pos_y_right = (int32_t) h_p2[blockIdx.x] + 32;
 	uint32_t best_offset_right = (uint32_t) warp_pos_x_right;
 	score = 32;
+    total_idents = 16;
 	best_score = 32;
 	p_ident = 100;
 
@@ -93,8 +95,9 @@ __global__ void kernel_frags_forward_register(uint32_t * h_p1, uint32_t * h_p2, 
 		
 		int idents = __shfl_sync(0xFFFFFFFF, cell_score, 0);
 		score = score + (int32_t) idents;
+        total_idents += (int32_t) idents;
 		score = score - (int32_t) (32 - idents);
-		p_ident = (int) ((100 * score) / (int32_t) (warp_pos_x_right - (hp1)));
+		p_ident = (int) ((100 * total_idents) / (int32_t) (warp_pos_x_right - (hp1)));
 
 		warp_pos_x_right += 32;
 		warp_pos_y_right += 32; 
@@ -122,7 +125,7 @@ __global__ void kernel_frags_reverse_register(uint32_t * h_p1, uint32_t * h_p2, 
 	int32_t warp_pos_y_left = (int32_t) h_p2[blockIdx.x];
 	int32_t thre_pos_x, thre_pos_y;
 	uint32_t best_offset_left = (uint32_t) warp_pos_x_left;
-	int32_t score = 32, best_score = 32;
+	int32_t score = 32, best_score = 32, total_idents = 16;
 	int p_ident = 100;
 	int cell_score;
 	
@@ -154,8 +157,9 @@ __global__ void kernel_frags_reverse_register(uint32_t * h_p1, uint32_t * h_p2, 
 		
 		int idents = __shfl_sync(0xFFFFFFFF, cell_score, 0);
 		score = score + (int32_t) idents;
+        total_idents += (int32_t) 32;
 		score = score - (int32_t) (32 - idents);
-		p_ident = ((100 * score) / (int) (hp1 - warp_pos_x_left));
+		p_ident = ((100 * total_idents) / (int) (hp1 - warp_pos_x_left));
 		if(score > best_score && p_ident >= MIN_P_IDENT){ best_score = score; best_offset_left = warp_pos_x_left; }
 		
 		
@@ -174,6 +178,7 @@ __global__ void kernel_frags_reverse_register(uint32_t * h_p1, uint32_t * h_p2, 
 	score = 32;
 	best_score = 32;
 	p_ident = 100;
+    total_idents = 16;
 
 	
 	//while(p_ident > MIN_P_IDENT && (warp_pos_x_right + 32) < (int64_t) x_lim && (warp_pos_y_right + 32) < (int64_t) y_lim)
@@ -192,8 +197,9 @@ __global__ void kernel_frags_reverse_register(uint32_t * h_p1, uint32_t * h_p2, 
 		
 		int idents = __shfl_sync(0xFFFFFFFF, cell_score, 0);
 		score = score + (int32_t) idents;
+        total_idents += (int32_t) 32;
 		score = score - (int32_t) (32 - idents);
-		p_ident = (int) ((100 * score) / (int32_t) (warp_pos_x_right - (hp1)));
+		p_ident = (int) ((100 * total_idents) / (int32_t) (warp_pos_x_right - (hp1)));
 
 		warp_pos_x_right += 32;
 		warp_pos_y_right += 32; 
