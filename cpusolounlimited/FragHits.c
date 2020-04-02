@@ -309,9 +309,10 @@ int FragFromHit(long M[1000][100], struct FragFile *myF, hit *H, struct Sequence
 	myF->length = myF->xEnd - myF->xStart + 1;
 	myF->score = fscoreMax;
 	myF->ident = maxIdentities;
-	myF->similarity = myF->score * 100.0
-			/ scoreMax(&sX->datos[myF->xStart], &sY->datos[myF->yStart],
-					myF->length, POINT);
+    myF->similarity = 100.0 * ((float) maxIdentities / (float)myF->length);
+	//myF->similarity = myF->score * 100.0
+	//		/ scoreMax(&sX->datos[myF->xStart], &sY->datos[myF->yStart],
+	//				myF->length, POINT);
 	myF->seqX = H->seqX;
 	myF->seqY = (strand=='f')? H->seqY : nSeqs1 - H->seqY - 1;
 	myF->block = 0;

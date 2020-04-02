@@ -13,6 +13,10 @@ PRINTALIGN=$5
 
 mkdir subfastas
 
+grep -v ">" $FASTAX | tr -d '\n' > subfastas/x.fasta
+grep -v ">" $FASTAY | tr -d '\n' > subfastas/y.fasta
+
+
 while IFS= read -r line; do
 
     coords=$(echo $line | awk 'BEGIN{FS=","}{print $2+1,$4+1,$3+1,$5+1,$6}')
@@ -32,8 +36,8 @@ while IFS= read -r line; do
         len=`expr $xend - $xstart`
         echo "> $2 [$xstart, $xend]"> subfastas/extractX-$xstart-$xend.fasta
         echo "> $3 [$ystart, $yend]"> subfastas/extractY-$ystart-$yend.fasta
-        grep -v ">" $FASTAX | tr -d '\n' | tail -c +$xstart | head -c $len >> subfastas/extractX-$xstart-$xend.fasta
-        grep -v ">" $FASTAY | tr -d '\n' | tail -c +$ystart | head -c $len >> subfastas/extractY-$ystart-$yend.fasta
+        tail -c +$xstart subfastas/x.fasta | head -c $len >> subfastas/extractX-$xstart-$xend.fasta
+        tail -c +$ystart subfastas/y.fasta | head -c $len >> subfastas/extractY-$ystart-$yend.fasta
 
         echo "query: subfastas/extractX-$xstart-$xend.fasta ref: subfastas/extractY-$ystart-$yend.fasta"
         #echo "Aligning $xstart-$xend with $ystart-$yend"
