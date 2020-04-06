@@ -11,10 +11,21 @@ FASTAY=$3
 TYPE=$4
 PRINTALIGN=$5
 
-mkdir subfastas
+REVCOM=/home/estebanpw/blueberry/openCL/ggecko/bin
+
+(mkdir subfastas) &> /dev/null
 
 grep -v ">" $FASTAX | tr -d '\n' > subfastas/x.fasta
 grep -v ">" $FASTAY | tr -d '\n' > subfastas/y.fasta
+
+$REVCOM/reverseComplement $FASTAY subfastas/yrev.temp
+grep -v ">" subfastas/yrev.temp | tr -d '\n' > subfastas/yrev.fasta
+
+FILTERX=./subfastas/x.fasta
+FILTERY=./subfastas/y.fasta
+
+lenX=$(wc -c $FILTERX | awk 'BEGIN{FS=" "}{print $1}')
+lenY=$(wc -c $FILTERY | awk 'BEGIN{FS=" "}{print $1}')
 
 
 while IFS= read -r line; do
@@ -63,7 +74,50 @@ while IFS= read -r line; do
             fi
         fi
 
+    else
+
+        len=`expr $xend - $xstart`
+        # Undo the y change
+        
+        ystart=`expr $lenY - $ystart`
+        ystart=`expr $ystart + 1`
+
+        yend=`expr $lenY - $yend`
+        yend=`expr $yend + 1`
+    
+
+        echo "> $2 [$xstart, $xend]"> subfastas/extractX-$xstart-$xend.fasta
+        echo "> $3 [$ystart, $yend]"> subfastas/extractYrev-$ystart-$yend.fasta
+        tail -c +$xstart subfastas/x.fasta | head -c $len >> subfastas/extractX-$xstart-$xend.fasta
+        tail -c +$ystart subfastas/yrev.fasta | head -c $len >> subfastas/extractYrev-$ystart-$yend.fasta
+
+        echo "query: subfastas/extractX-$xstart-$xend.fasta ref: subfastas/extractYrev-$ystart-$yend.fasta"
+        #echo "Aligning $xstart-$xend with $ystart-$yend"
+        if [[ $TYPE == "gapped" ]] || [[ $TYPE == "both" ]]; then
+            needle -asequence subfastas/extractX-$xstart-$xend.fasta -bsequence subfastas/extractYrev-$ystart-$yend.fasta -outfile subfastas/align-$xstart-$ystart.align -gapopen 10 -gapextend 0.5 &> /dev/null
+            echo "Gapped alignment"
+            cat subfastas/align-$xstart-$ystart.align | grep "Identity\|Similarity\|Gaps"
+        fi
+
+        if [[ $TYPE == "ungapped" ]] || [[ $TYPE == "both" ]]; then
+            echo "Ungapped alignment"
+            if [[ $PRINTALIGN == "1" ]]; then
+                awk 'NR==FNR && FNR==2{l1=$0} NR!=FNR && FNR==2{l2=$0}
+                END{good=0; split(l1, s1, ""); split(l2, s2, ""); print l1;
+                for(i=1; i<=length(l1); i++){ if(s1[i]==s2[i]) {good++; printf("|");} else printf(" ");  }; printf("\n");
+                print l2; print "@ Identity:",good "/" length(l1), "("100*good/length(l1)"%)";  }' subfastas/extractX-$xstart-$xend.fasta subfastas/extractYrev-$ystart-$yend.fasta
+            else
+
+                awk 'NR==FNR && FNR==2{l1=$0} NR!=FNR && FNR==2{l2=$0}
+                END{good=0; split(l1, s1, ""); split(l2, s2, "");
+                for(i=1; i<=length(l1); i++){ if(s1[i]==s2[i])good++; };
+                print "@ Identity:",good "/" length(l1), "("100*good/length(l1)"%)"  }' subfastas/extractX-$xstart-$xend.fasta subfastas/extractYrev-$ystart-$yend.fasta
+            fi
+        fi
+
     fi
+
+   
 
 done < <(tail -n +18 $CSV)
 
