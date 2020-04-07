@@ -18,6 +18,7 @@ void build_frag(uint32_t * xStart, uint32_t * xEnd, uint32_t * yStart, uint32_t 
         *yStart = filtered_hits_y[id] - host_left_offset[id];
         *yEnd = filtered_hits_y[id] + host_right_offset[id];
     }
+    //printf("Fraggo %u %u %u %u\n", *xStart, *xEnd, *yStart, *yEnd);
     *curr_l = *xEnd - *xStart;
 }
 
@@ -36,17 +37,18 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
 
     uint32_t max_id = 0;
     uint32_t written_frags = 0;
+    uint32_t last_unwritten = 0;
 
-    if(n_frags == 1){
+    if(n_frags == 1 && xEnd-xStart >= min_length){
         if(strand == 'f'){
 
             uint32_t score = (uint32_t)(curr_l * MIN_P_IDENT);
-            fprintf(out, "Frag,%"PRIu32",%"PRIu32",%"PRIu32",%"PRIu32",%c,0,%"PRIu32",%"PRIu32",%"PRIu32",80.01,80.01,0,0\n", xStart, yStart, xEnd, yEnd, strand, curr_l, score, score);
+            fprintf(out, "Frag,%"PRIu32",%"PRIu32",%"PRIu32",%"PRIu32",%c,0,%"PRIu32",%"PRIu32",%"PRIu32",80.00,80.00,0,0\n", xStart, yStart, xEnd, yEnd, strand, curr_l, score, score);
         }else{
             uint32_t best_yStart = ref_len - yStart - 1;
             uint32_t best_yEnd = ref_len - yEnd - 1;
             uint32_t score = (uint32_t)(curr_l * MIN_P_IDENT);
-            fprintf(out, "Frag,%"PRIu32",%"PRIu32",%"PRIu32",%"PRIu32",%c,0,%"PRIu32",%"PRIu32",%"PRIu32",80.01,80.01,0,0\n", xStart, best_yStart, xEnd, best_yEnd, strand, curr_l, score, score);
+            fprintf(out, "Frag,%"PRIu32",%"PRIu32",%"PRIu32",%"PRIu32",%c,0,%"PRIu32",%"PRIu32",%"PRIu32",80.00,80.00,0,0\n", xStart, best_yStart, xEnd, best_yEnd, strand, curr_l, score, score);
 
         }
         ++written_frags;
@@ -81,7 +83,9 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
                     //fprintf(stdout, "Yea, next one is bigger\n");
                     curr_l = next_l;
                     max_id = current+1;
+                    last_unwritten = 1;
                 }
+
 
             }else{
 
@@ -95,10 +99,11 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
                     
                     // Type,xStart,yStart,xEnd,yEnd,strand(f/r),block,length,score,ident,similarity,%%ident,SeqX,SeqY
                     uint32_t score = (uint32_t)(best_l * MIN_P_IDENT);
-                    fprintf(out, "Frag,%"PRIu32",%"PRIu32",%"PRIu32",%"PRIu32",%c,0,%"PRIu32",%"PRIu32",%"PRIu32",80.01,80.01,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l, score, score);
+                    fprintf(out, "Frag,%"PRIu32",%"PRIu32",%"PRIu32",%"PRIu32",%c,0,%"PRIu32",%"PRIu32",%"PRIu32",80.00,80.00,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l, score, score);
                     ++written_frags;
                 }
                 max_id = current+1;
+                last_unwritten = 0;
 
 
                 
@@ -122,6 +127,7 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
                     //fprintf(stdout, "Yea, next one is bigger\n");
                     curr_l = next_l;
                     max_id = current+1;
+                    last_unwritten = 1;
                 }
 
             }else{
@@ -138,11 +144,12 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
                     best_yStart = ref_len - best_yStart - 1;
                     best_yEnd = ref_len - best_yEnd - 1;
                     uint32_t score = (uint32_t)(best_l * MIN_P_IDENT);
-                    fprintf(out, "Frag,%"PRIu32",%"PRIu32",%"PRIu32",%"PRIu32",%c,0,%"PRIu32",%"PRIu32",%"PRIu32",80.01,80.01,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l, score, score);
+                    fprintf(out, "Frag,%"PRIu32",%"PRIu32",%"PRIu32",%"PRIu32",%c,0,%"PRIu32",%"PRIu32",%"PRIu32",80.00,80.00,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l, score, score);
                     ++written_frags;
                     
                 }
                 max_id = current+1;
+                last_unwritten = 0;
 
                 build_frag(&xStart, &xEnd, &yStart, &yEnd, &curr_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, max_id);
                 //fprintf(stdout, "I am [%"PRIu64"]: Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64", his hit [%"PRIu64", %"PRIu64"]\n", max_id, xStart, yStart, xEnd, yEnd, strand, curr_l, filtered_hits_x[max_id], filtered_hits_y[max_id]);
@@ -151,6 +158,43 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
 
         ++current;
     }
+
+    if(last_unwritten != 0)
+    {
+        if(strand == 'f')
+        {
+            uint32_t best_xStart, best_xEnd, best_yStart, best_yEnd, best_l;
+
+            build_frag(&best_xStart, &best_xEnd, &best_yStart, &best_yEnd, &best_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, max_id);
+
+            if((best_xEnd - best_xStart) >= min_length){
+
+                uint32_t score = (uint32_t)(best_l * MIN_P_IDENT);
+                fprintf(out, "Frag,%"PRIu32",%"PRIu32",%"PRIu32",%"PRIu32",%c,0,%"PRIu32",%"PRIu32",%"PRIu32",80.00,80.00,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l, score, score);
+                ++written_frags;
+            }
+
+        }
+        else
+        {
+
+            uint32_t best_xStart, best_xEnd, best_yStart, best_yEnd, best_l;
+
+            build_frag(&best_xStart, &best_xEnd, &best_yStart, &best_yEnd, &best_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, max_id);
+
+            if((best_xEnd - best_xStart) >= min_length){
+                best_yStart = ref_len - best_yStart - 1;
+                best_yEnd = ref_len - best_yEnd - 1;
+                uint32_t score = (uint32_t)(best_l * MIN_P_IDENT);
+                fprintf(out, "Frag,%"PRIu32",%"PRIu32",%"PRIu32",%"PRIu32",%c,0,%"PRIu32",%"PRIu32",%"PRIu32",80.00,80.00,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l, score, score);
+                ++written_frags;
+
+            }
+
+        }
+    }
+
+
     fprintf(stdout, "[INFO] Remaining frags %"PRIu32" out of %"PRIu32" on strand %c\n", written_frags, n_frags, strand);
     
 

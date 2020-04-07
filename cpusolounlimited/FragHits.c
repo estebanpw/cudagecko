@@ -320,7 +320,7 @@ int FragFromHit(long M[1000][100], struct FragFile *myF, hit *H, struct Sequence
 
 	M[min(myF->length, 999)][(int)myF->similarity]++;
 
-	if (myF->length > minLength && myF->similarity > SimTh)
+	if (myF->length >= minLength && myF->similarity >= SimTh)
 		return 1;
 	else
 		return 0;

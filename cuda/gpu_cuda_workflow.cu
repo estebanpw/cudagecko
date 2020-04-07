@@ -274,9 +274,11 @@ int main(int argc, char ** argv)
     fprintf(stdout, "\t(Begin rev)%.32s\n", ref_rev_seq_host);
     fprintf(stdout, "\t(End   ref)%.32s\n", &ref_seq_host[ref_len-32]);
     fprintf(stdout, "\t(End   rev)%.32s\n", &ref_rev_seq_host[ref_len-32]);
-    
-    //fprintf(stdout, "\t(Begin ref)%s\n", ref_seq_host);
-    //fprintf(stdout, "\t(Begin rev)%s\n", ref_rev_seq_host);
+   
+     
+    fprintf(stdout, "\t(Full que)%.*s\n", query_len, query_seq_host);
+    fprintf(stdout, "\t(Full ref)%.*s\n", ref_len, ref_seq_host);
+    fprintf(stdout, "\t(Full rev)%.*s\n", ref_len, ref_rev_seq_host);
 
 
     // Write header to CSV

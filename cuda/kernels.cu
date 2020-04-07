@@ -29,12 +29,14 @@ __global__ void kernel_frags_forward_register(uint32_t * h_p1, uint32_t * h_p2, 
 	int32_t warp_pos_x_left = hp1;
 	int32_t warp_pos_y_left = (int32_t) h_p2[blockIdx.x];
 	int32_t thre_pos_x, thre_pos_y;
-	uint32_t best_offset_left = (uint32_t) warp_pos_x_left;
+	uint32_t best_offset_left = (uint32_t) hp1;
 	int32_t score = 32, best_score = 32, total_idents = 16; // Half of the hit for each side
 	int p_ident = 100;
 	int cell_score;
+
+    //int counter = 0;
+    //if(threadIdx.x==0)printf("BLOCK %d %d new frag, new life - start %u\n", blockIdx.x, counter++, hp1);
 	
-	//while(p_ident > MIN_P_IDENT && (warp_pos_x_left - 32) >= (int64_t) x_seq_off && (warp_pos_y_left - 32) >= (int64_t) y_seq_off)
 	while(score > 0 && (warp_pos_x_left - 32) >= (int32_t) x_seq_off && (warp_pos_y_left - 32) >= (int32_t) y_seq_off)
 	{
 		
@@ -48,7 +50,6 @@ __global__ void kernel_frags_forward_register(uint32_t * h_p1, uint32_t * h_p2, 
 		char v_x = seq_x[thre_pos_x - (int32_t) x_seq_off];
 		char v_y = seq_y[thre_pos_y - (int32_t) y_seq_off];
 
-		//cell_score = (v_x == v_y && v_x != '\0' && v_y != '\0');
 		cell_score = (v_x == v_y);
 
 		for (int offset = 16; offset > 0; offset = offset >> 1)
@@ -60,13 +61,13 @@ __global__ void kernel_frags_forward_register(uint32_t * h_p1, uint32_t * h_p2, 
         total_idents += (int32_t) idents;
 		score = score - (int32_t) (32 - idents);
 		p_ident = ((100 * total_idents) / (int) (hp1 - warp_pos_x_left + 16));
-        //if(threadIdx.x == 0) printf(" yea current pident to left %d positions: [start: %u and moved to %u]\n", p_ident, hp1, warp_pos_x_left);
+        //if(threadIdx.x == 0) printf("BLOCK %d %d yea current pident to left %d positions: [start: %u and moved to %u]\n", blockIdx.x, counter++, p_ident, hp1, warp_pos_x_left);
 		if(score > best_score && p_ident >= MIN_P_IDENT){ best_score = score; best_offset_left = warp_pos_x_left; }
 		
 		
 	}
 	
-	
+    //if(threadIdx.x==0) printf("BLOCK %d %d end left al\n", blockIdx.x, counter++);	
 	
 	
 
@@ -80,7 +81,6 @@ __global__ void kernel_frags_forward_register(uint32_t * h_p1, uint32_t * h_p2, 
 	p_ident = 100;
 
 	
-	//while(p_ident > MIN_P_IDENT && (warp_pos_x_right + 32) < (int64_t) x_lim && (warp_pos_y_right + 32) < (int64_t) y_lim)
 	while(score > 0 && (warp_pos_x_right + 32) < (int32_t) x_lim && (warp_pos_y_right + 32) < (int32_t) y_lim)
 	{
 		thre_pos_x = warp_pos_x_right + threadIdx.x;
@@ -99,21 +99,25 @@ __global__ void kernel_frags_forward_register(uint32_t * h_p1, uint32_t * h_p2, 
         total_idents += (int32_t) idents;
 		score = score - (int32_t) (32 - idents);
 		p_ident = (int) ((100 * total_idents) / (int32_t) (warp_pos_x_right - (hp1) + 16));
-        //if(threadIdx.x == 0) printf(" yea current pident to right %d\n", p_ident);
 
 		warp_pos_x_right += 32;
 		warp_pos_y_right += 32; 
+
+        //if(threadIdx.x == 0) printf("BLOCK %d %d yea current pident to right %d positions: [start: %u and moved to %u]\n", blockIdx.x, counter++, p_ident, hp1 + 32, warp_pos_x_right);
 
 		if(score > best_score && p_ident >= MIN_P_IDENT){ best_score = score; best_offset_right = warp_pos_x_right; }
 
 	}
 	
 	
+    //if(threadIdx.x==0) printf("BLOCK %d %d end right al\n", blockIdx.x, counter++);	
 
 	// Save at the end
 	if(threadIdx.x == 0){
 		left_offset[blockIdx.x] = hp1 - (uint32_t) best_offset_left;
+        //printf("BLOCK %d %d left offset:  %u\n", blockIdx.x, counter++, left_offset[blockIdx.x]);
 		right_offset[blockIdx.x] = (uint32_t) (best_offset_right) - hp1;
+        //printf("BLOCK %d %d right offset: %u\n", blockIdx.x, counter++, right_offset[blockIdx.x]);
 	}
 
 }
@@ -126,11 +130,13 @@ __global__ void kernel_frags_reverse_register(uint32_t * h_p1, uint32_t * h_p2, 
 	int32_t warp_pos_x_left = hp1;
 	int32_t warp_pos_y_left = (int32_t) h_p2[blockIdx.x];
 	int32_t thre_pos_x, thre_pos_y;
-	uint32_t best_offset_left = (uint32_t) warp_pos_x_left;
+	uint32_t best_offset_left = (uint32_t) hp1;
 	int32_t score = 32, best_score = 32, total_idents = 16;
 	int p_ident = 100;
 	int cell_score;
-	
+
+    //int counter = 0;
+    //if(threadIdx.x==0)printf("BLOCK %d %d new frag, new life - startx %u starty %u\n", blockIdx.x, counter++, hp1, h_p2[blockIdx.x]);	
 
 	
 	//while(p_ident > MIN_P_IDENT && (warp_pos_x_left - 32) >= (int64_t) x_seq_off && (warp_pos_y_left - 32) >= (int64_t) y_seq_off)
@@ -158,12 +164,15 @@ __global__ void kernel_frags_reverse_register(uint32_t * h_p1, uint32_t * h_p2, 
 
 		
 		int idents = __shfl_sync(0xFFFFFFFF, cell_score, 0);
+
+        //if(threadIdx.x == 0) printf("BLOCK %d %d score this round: %d\n", blockIdx.x, counter++, idents);
 		score = score + (int32_t) idents;
-        total_idents += (int32_t) 32;
+        total_idents += (int32_t) idents;
 		score = score - (int32_t) (32 - idents);
 		p_ident = ((100 * total_idents) / (int) (hp1 - warp_pos_x_left + 16));
 		if(score > best_score && p_ident >= MIN_P_IDENT){ best_score = score; best_offset_left = warp_pos_x_left; }
-		
+	
+        //if(threadIdx.x == 0) printf("BLOCK %d %d yea current pident to left %d positions: [start: %u and moved to %u]\n", blockIdx.x, counter++, p_ident, hp1, warp_pos_x_left);	
 		
 		
 
@@ -171,7 +180,7 @@ __global__ void kernel_frags_reverse_register(uint32_t * h_p1, uint32_t * h_p2, 
 	
 	
 	
-	
+	//if(threadIdx.x==0) printf("BLOCK %d %d end left al\n", blockIdx.x, counter++);
 
 	// RIGHT ALIGNMENT
 	int32_t warp_pos_x_right = hp1 + 32;
@@ -199,25 +208,28 @@ __global__ void kernel_frags_reverse_register(uint32_t * h_p1, uint32_t * h_p2, 
 		
 		int idents = __shfl_sync(0xFFFFFFFF, cell_score, 0);
 		score = score + (int32_t) idents;
-        total_idents += (int32_t) 32;
+        total_idents += (int32_t) idents;
 		score = score - (int32_t) (32 - idents);
 		p_ident = (int) ((100 * total_idents) / (int32_t) (warp_pos_x_right - (hp1) + 16));
 
 		warp_pos_x_right += 32;
 		warp_pos_y_right += 32; 
 
+        //if(threadIdx.x == 0) printf("BLOCK %d %d yea current pident to right %d positions: [start: %u and moved to %u]\n", blockIdx.x, counter++, p_ident, h_p2[blockIdx.x] + 32, warp_pos_x_right);
 		if(score > best_score && p_ident >= MIN_P_IDENT){ best_score = score; best_offset_right = warp_pos_x_right; }
 
 	}
 	
-	
+	//if(threadIdx.x==0) printf("BLOCK %d %d end right al\n", blockIdx.x, counter++);
 	
 
 	// Save at the end
 	if(threadIdx.x == 0){
 		left_offset[blockIdx.x] = hp1 - (uint32_t) best_offset_left;
+        //printf("BLOCK %d %d left offset:  %u\n", blockIdx.x, counter++, left_offset[blockIdx.x]);
 		//right_offset[blockIdx.x] = (uint64_t) (best_offset_right + 32) - h_p1[blockIdx.x];
 		right_offset[blockIdx.x] = (uint32_t) (best_offset_right) - hp1;
+        //printf("BLOCK %d %d right offset: %u\n", blockIdx.x, counter++, right_offset[blockIdx.x]);
 	}
 
 }
