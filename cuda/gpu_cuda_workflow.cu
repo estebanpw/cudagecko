@@ -3,7 +3,8 @@
 #include "kernels.cuh"
 #include "cpu_functions.c"
 #include "cub/cub.cuh"
-
+#include <thrust/sort.h>
+#include <thrust/device_ptr.h>
 //#define DIMENSION 1000
 
 
@@ -70,6 +71,7 @@ int main(int argc, char ** argv)
 
     // Calculate how much ram we can use for every chunk
     uint32_t effective_global_ram =  (global_device_RAM - 100*1024*1024); //Minus 100 MBs for other stuff
+    effective_global_ram = global_device_RAM/2;
 
     // We will do the one-time alloc here
     // i.e. allocate a pool once and used it manually
@@ -571,45 +573,47 @@ int main(int argc, char ** argv)
         uint32_t * ptr_values_buf = (uint32_t *) (base_ptr + address_checker); // Each alloc adds on top of the previous one
         address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
 
-        //cub::DoubleBuffer<uint64_t> d_keys(keys, keys_buf);
-        //cub::DoubleBuffer<uint32_t> d_values(values, values_buf);
 
-        cub::DoubleBuffer<uint64_t> d_keys(ptr_keys, ptr_keys_buf);
-        cub::DoubleBuffer<uint32_t> d_values(ptr_values, ptr_values_buf);
+        //cub::DoubleBuffer<uint64_t> d_keys(ptr_keys, ptr_keys_buf);
+        //cub::DoubleBuffer<uint32_t> d_values(ptr_values, ptr_values_buf);
 
         void * d_temp_storage = NULL;
         size_t temp_storage_bytes = 0;
-        cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys, d_values, items_read_x);
-        ret = cudaDeviceSynchronize();
-        if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (1). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+        //cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys, d_values, items_read_x);
+        //ret = cudaDeviceSynchronize();
+        //if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (1). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
         // Allocate temporary storage
-        ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
-        if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for words sorting (1). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+        //ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
+        //if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for words sorting (1). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
-        // Remove this for  debug
-        //read_kmers(query_len, query_seq_host, dict_x_keys, dict_x_values);
-        //ret = cudaMemcpy(keys, dict_x_keys, items_read_x*sizeof(uint64_t), cudaMemcpyHostToDevice);
-        //ret = cudaMemcpy(values, dict_x_values, items_read_x*sizeof(uint64_t), cudaMemcpyHostToDevice);
         
-        cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys, d_values, items_read_x);
+        //cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys, d_values, items_read_x);
+        //ret = cudaDeviceSynchronize();
+        //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on query. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+
+        thrust::device_ptr<uint64_t> t_k(ptr_keys);
+        thrust::device_ptr<uint32_t> t_v(ptr_values);
+
+        thrust::sort_by_key(t_k, t_k + items_read_x, t_v);
         ret = cudaDeviceSynchronize();
-        if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on query. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+        if(ret != cudaSuccess){ fprintf(stderr, "THRUST sorting failed on query. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
         
 
         // Download sorted kmers
-        ret = cudaMemcpyAsync(dict_x_keys, ptr_keys_buf, items_read_x*sizeof(uint64_t), cudaMemcpyDeviceToHost, streams[0]);
+        //ret = cudaMemcpyAsync(dict_x_keys, ptr_keys_buf, items_read_x*sizeof(uint64_t), cudaMemcpyDeviceToHost, streams[0]);
+        //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (1). Error: %d\n", ret); exit(-1); }
+        //ret = cudaMemcpyAsync(dict_x_values, ptr_values_buf, items_read_x*sizeof(uint32_t), cudaMemcpyDeviceToHost, streams[1]);
+        //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (2). Error: %d\n", ret); exit(-1); }
+
+        ret = cudaMemcpyAsync(dict_x_keys, ptr_keys, items_read_x*sizeof(uint64_t), cudaMemcpyDeviceToHost, streams[0]);
         if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (1). Error: %d\n", ret); exit(-1); }
-        ret = cudaMemcpyAsync(dict_x_values, ptr_values_buf, items_read_x*sizeof(uint32_t), cudaMemcpyDeviceToHost, streams[1]);
+        ret = cudaMemcpyAsync(dict_x_values, ptr_values, items_read_x*sizeof(uint32_t), cudaMemcpyDeviceToHost, streams[1]);
         if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (2). Error: %d\n", ret); exit(-1); }
 
-        // Print hits for debug
-        //for(i=0; i<items_read_x; i++){
-        //    fprintf(out, "%"PRIu64"\n", dict_x_values[i]);
-        //}
 
-        ret = cudaFree(d_temp_storage);
-        if(ret != cudaSuccess){ fprintf(stderr, "Bad free of temp storage (1): %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+        //ret = cudaFree(d_temp_storage);
+        //if(ret != cudaSuccess){ fprintf(stderr, "Bad free of temp storage (1): %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
         
         end = clock();
 #ifdef SHOWTIME
