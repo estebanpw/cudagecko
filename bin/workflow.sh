@@ -10,7 +10,7 @@ if [ $# != 6 ]; then
    exit -1
 fi
 
-{
+#{
 
 dirNameX=$(readlink -f $1 | xargs dirname)
 seqXName=$(basename "$1")
@@ -53,18 +53,18 @@ echo "${BINDIR}/reverseComplement ${seqYName}.${extensionX} ${seqYName}-revercom
 ${BINDIR}/reverseComplement ${seqYName}.${extensionX} ${seqYName}-revercomp.${extensionY}
 
 if [[ ! -f ../dictionaries/${seqXName}.d2hP ]];	then
-	echo "${BINDIR}/dictionary.sh ${seqXName}.${extensionX}"
-	${BINDIR}/dictionary.sh ${seqXName}.${extensionX}
+	echo "${BINDIR}/dictionary.sh ${seqXName}.${extensionX} &"
+	${BINDIR}/dictionary.sh ${seqXName}.${extensionX} &		
 fi
 		
 if [[ ! -f ../dictionaries/${seqYName}.d2hP ]];	then
-	echo "${BINDIR}/dictionary.sh ${seqYName}.${extensionY}"
-	${BINDIR}/dictionary.sh ${seqYName}.${extensionY}
+	echo "${BINDIR}/dictionary.sh ${seqYName}.${extensionY} &"
+	${BINDIR}/dictionary.sh ${seqYName}.${extensionY} &
 fi
 		
 if [[ ! -f ../dictionaries/${seqYName}-revercomp.d2hP ]];	then
-	echo "${BINDIR}/dictionary.sh ${seqYName}-revercomp.${extensionY}"
-	${BINDIR}/dictionary.sh ${seqYName}-revercomp.${extensionY}
+	echo "${BINDIR}/dictionary.sh ${seqYName}-revercomp.${extensionY} &"
+	${BINDIR}/dictionary.sh ${seqYName}-revercomp.${extensionY} &
 fi		
 
 echo "Waiting for the calculation of the dictionaries"
@@ -93,11 +93,11 @@ ln -s ../dictionaries/${seqYName}.d2hW .
 ln -s ../dictionaries/${seqYName}-revercomp.d2hP .
 ln -s ../dictionaries/${seqYName}-revercomp.d2hW .
 
-echo "${BINDIR}/comparison.sh ${seqXName}.${extensionX} ${seqYName}.${extensionY} ${length} ${similarity} ${WL} ${fixedL} f"
-${BINDIR}/comparison.sh ${seqXName}.${extensionX} ${seqYName}.${extensionY} ${length} ${similarity} ${WL} ${fixedL} f
+echo "${BINDIR}/comparison.sh ${seqXName}.${extensionX} ${seqYName}.${extensionY} ${length} ${similarity} ${WL} ${fixedL} f &"
+${BINDIR}/comparison.sh ${seqXName}.${extensionX} ${seqYName}.${extensionY} ${length} ${similarity} ${WL} ${fixedL} f &
 
-echo "${BINDIR}/comparison.sh ${seqXName}.${extensionX} ${seqYName}-revercomp.${extensionY} ${length} ${similarity} ${WL} ${fixedL} r"
-${BINDIR}/comparison.sh ${seqXName}.${extensionX} ${seqYName}-revercomp.${extensionY} ${length} ${similarity} ${WL} ${fixedL} r
+echo "${BINDIR}/comparison.sh ${seqXName}.${extensionX} ${seqYName}-revercomp.${extensionY} ${length} ${similarity} ${WL} ${fixedL} r &"
+${BINDIR}/comparison.sh ${seqXName}.${extensionX} ${seqYName}-revercomp.${extensionY} ${length} ${similarity} ${WL} ${fixedL} r &
 
 echo "Waiting for the comparisons"
 
@@ -148,4 +148,4 @@ mv ${seqXName}-${seqYName}.csv ../../results
 cd ..
 #rm -rf ${seqXName}-${seqYName}
 
-} &> /dev/null
+#} &> /dev/null

@@ -11,6 +11,7 @@
 // Program main
 ////////////////////////////////////////////////////////////////////////////////
 
+
 //uint64_t filter_hits(hit_advanced * hits_in, ulong kmer_size, ulong n_hits_found);
 void print_header(FILE * out, uint32_t query_len, uint32_t ref_len);
 
@@ -22,6 +23,10 @@ int main(int argc, char ** argv)
     unsigned selected_device = 0;
     FILE * query = NULL, * ref = NULL, * out = NULL;
     init_args(argc, argv, &query, &selected_device, &ref, &out, &min_length, &fast, &max_frequency, &factor);
+
+    clock_t start = clock();
+    /*Do something*/
+    clock_t end = clock();
 
     ////////////////////////////////////////////////////////////////////////////////
     // Get info of devices
@@ -199,6 +204,8 @@ int main(int argc, char ** argv)
     fprintf(stdout, "[INFO] Loading query\n");
     load_seq(query, query_seq_host);
     fprintf(stdout, "[INFO] Loading reference\n");
+
+    start = clock();
     load_seq(ref, ref_seq_host);
     fprintf(stdout, "[INFO] Reversing reference\n");
     
@@ -215,7 +222,8 @@ int main(int argc, char ** argv)
     char * ptr_seq_dev_mem_aux = &data_mem[0];
     // ref_len * sizeof(char)) -> seq_dev_mem_reverse_aux
     char * ptr_seq_dev_mem_reverse_aux = &data_mem[ref_len];
-    
+   
+ 
     if(ref_len > 1024){
     
 
@@ -262,12 +270,15 @@ int main(int argc, char ** argv)
     ret = cudaMemcpy(ref_rev_seq_host, ptr_seq_dev_mem_reverse_aux, ref_len, cudaMemcpyDeviceToHost);
     if(ret != cudaSuccess){ fprintf(stderr, "Could not copy reference sequence to device for reversing. Error: %d\n", ret); exit(-1); }
 
+    end = clock();
 
     //cudaFree(seq_dev_mem_aux);
     //cudaFree(seq_dev_mem_reverse_aux);
 
     // Print some info
-
+#ifdef SHOWTIME
+    fprintf(stdout, "[INFO] rev comp t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+#endif
     fprintf(stdout, "[INFO] Showing start of reference sequence:\n");
     
     fprintf(stdout, "\t(Begin ref)%.32s\n", ref_seq_host);
@@ -460,6 +471,7 @@ int main(int argc, char ** argv)
         //ret = cudaMalloc(&values, words_at_once * sizeof(uint32_t));
         //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (2). Error: %d\n", ret); exit(-1); }
 
+        start = clock();
 
         // ## POINTER SECTION 1
         char * ptr_seq_dev_mem = &data_mem[0];
@@ -528,7 +540,10 @@ int main(int argc, char ** argv)
         fclose(anything8);
         */
         
-        
+        end = clock();
+#ifdef SHOWTIME
+        fprintf(stdout, "[INFO] words Q t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+#endif
 
         ////////////////////////////////////////////////////////////////////////////////
         // Sort the query kmers
@@ -546,6 +561,8 @@ int main(int argc, char ** argv)
 
 
         // ## POINTER SECTION 2
+
+        start = clock();
         
         address_checker = realign_address(address_checker, 8);
         uint64_t * ptr_keys_buf = (uint64_t *) (base_ptr + address_checker);
@@ -593,6 +610,11 @@ int main(int argc, char ** argv)
 
         ret = cudaFree(d_temp_storage);
         if(ret != cudaSuccess){ fprintf(stderr, "Bad free of temp storage (1): %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+        
+        end = clock();
+#ifdef SHOWTIME
+        fprintf(stdout, "[INFO] sort words Q t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+#endif
 
         pos_in_query += words_at_once;
 
@@ -621,7 +643,7 @@ int main(int argc, char ** argv)
             // FORWARD strand in the reference
             ////////////////////////////////////////////////////////////////////////////////
 
-            
+            start = clock();
 
             uint32_t items_read_y = MIN(ref_len - pos_in_ref, words_at_once);
 
@@ -668,6 +690,11 @@ int main(int argc, char ** argv)
 
             }
 
+            end = clock();
+#ifdef SHOWTIME
+            fprintf(stdout, "[INFO] words R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+#endif
+
 
             //cudaFree(seq_dev_mem);
 
@@ -683,6 +710,8 @@ int main(int argc, char ** argv)
             //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (4). Error: %d\n", ret); exit(-1); }
 
             // ## POINTER SECTION 4
+
+            start = clock();
         
             address_checker = realign_address(address_checker, 8);
             ptr_keys_buf = (uint64_t *) (base_ptr + address_checker);
@@ -725,6 +754,11 @@ int main(int argc, char ** argv)
 
             pos_in_ref += words_at_once;
 
+            end = clock();
+#ifdef SHOWTIME
+            fprintf(stdout, "[INFO] sort words R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+#endif
+
 
             ////////////////////////////////////////////////////////////////////////////////
             // Generate FORWARD hits for the current split
@@ -744,12 +778,20 @@ int main(int argc, char ** argv)
             //cudaFree(keys_buf);
             //cudaFree(values_buf);
 
+            start = clock();
+
             uint32_t n_hits_found;
             if(fast == 1)
                 n_hits_found = generate_hits_fast(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             else
                 n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency);
             
+
+            end = clock();
+#ifdef SHOWTIME
+            fprintf(stdout, "[INFO] hits Q-R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+#endif
+
             fprintf(stdout, "[INFO] Generated %"PRIu32" hits on split %d -> (%d%%)[%u,%u]{%u,%u}\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len), pos_in_query, pos_in_ref, items_read_x, items_read_y);
 
             // Print hits for debug
@@ -778,6 +820,8 @@ int main(int argc, char ** argv)
 
 
             // ## POINTER SECTION 5
+
+            start = clock();
 
             address_checker = 0;
             base_ptr = &data_mem[0];
@@ -831,10 +875,22 @@ int main(int argc, char ** argv)
             //    fprintf(stdout, "%"PRIu32" %"PRIu32"\n", hits[indexing_numbers[i]].p1, hits[indexing_numbers[i]].p2);
             //}
 
+            end = clock();
+#ifdef SHOWTIME
+            fprintf(stdout, "[INFO] sort hits Q-R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+#endif
+
             memset(filtered_hits_x, 0x0000, n_hits_found * sizeof(uint32_t));
             memset(filtered_hits_y, 0x0000, n_hits_found * sizeof(uint32_t));
 
+            start = clock();
+
             uint32_t n_hits_kept = filter_hits_forward(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
+
+            end = clock();
+#ifdef SHOWTIME
+            fprintf(stdout, "[INFO] filter hits Q-R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+#endif
 
             fprintf(stdout, "[INFO] Remaining hits %"PRIu32"\n", n_hits_kept);
 
@@ -866,6 +922,8 @@ int main(int argc, char ** argv)
 
 
             // ## POINTER SECTION 6
+
+            start = clock();
 
             address_checker = 0;
             base_ptr = &data_mem[0];
@@ -915,6 +973,11 @@ int main(int argc, char ** argv)
 
             ret = cudaMemcpy(host_left_offset, ptr_left_offset, n_hits_kept * sizeof(uint32_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back left offset. Error: %d\n", ret); exit(-1); }
             ret = cudaMemcpy(host_right_offset, ptr_right_offset, n_hits_kept * sizeof(uint32_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back right offset. Error: %d\n", ret); exit(-1); }
+
+            end = clock();
+#ifdef SHOWTIME
+            fprintf(stdout, "[INFO] frags Q-R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+#endif
 
             /*
             char name[100] = "\0";
@@ -974,6 +1037,8 @@ int main(int argc, char ** argv)
             
             // ## POINTER SECTION 7
 
+            start = clock();
+
             address_checker = 0;
             base_ptr = &data_mem[0];
             ptr_seq_dev_mem = (char *) (base_ptr);
@@ -1009,6 +1074,11 @@ int main(int argc, char ** argv)
                 if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on ref reversed. Error: %d\n", ret); exit(-1); }
             }
 
+            end = clock();
+#ifdef SHOWTIME
+            fprintf(stdout, "[INFO] words RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+#endif
+
             //cudaFree(seq_dev_mem);
 
             ////////////////////////////////////////////////////////////////////////////////
@@ -1021,6 +1091,8 @@ int main(int argc, char ** argv)
             //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (4). Error: %d\n", ret); exit(-1); }
 
             // ## POINTER SECTION 8
+
+            start = clock();
 
             address_checker = realign_address(address_checker, 8);
             ptr_keys_buf = (uint64_t *) (base_ptr + address_checker);
@@ -1060,6 +1132,11 @@ int main(int argc, char ** argv)
 
             pos_in_ref += words_at_once;
 
+            end = clock();
+#ifdef SHOWTIME
+            fprintf(stdout, "[INFO] sort words RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+#endif
+
             ////////////////////////////////////////////////////////////////////////////////
             // Generate hits for the current split BUT REVERSED !
             ////////////////////////////////////////////////////////////////////////////////
@@ -1070,12 +1147,19 @@ int main(int argc, char ** argv)
             //cudaFree(keys_buf);
             //cudaFree(values_buf);
 
+            start = clock();
+
             uint32_t n_hits_found;
             if(fast == 1)
                 n_hits_found = generate_hits_fast(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             else
                 n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency);
             
+            end = clock();
+#ifdef SHOWTIME
+            fprintf(stdout, "[INFO] hits Q-RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+#endif
+
             fprintf(stdout, "[INFO] Generated %"PRIu32" hits on reversed split %d -> (%d%%)[%u,%u]{%u,%u}\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len), pos_in_query, pos_in_ref, items_read_x, items_read_y);
 
 
@@ -1096,6 +1180,8 @@ int main(int argc, char ** argv)
             //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for hits in device (4). Error: %d\n", ret); exit(-1); }
 
             // ## POINTER SECTION 9
+
+            start = clock();
 
             base_ptr = &data_mem[0];
             address_checker = 0;
@@ -1142,10 +1228,22 @@ int main(int argc, char ** argv)
             ret = cudaMemcpy(diagonals, ptr_device_diagonals_buf, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
 
+            end = clock();
+#ifdef SHOWTIME
+            fprintf(stdout, "[INFO] sorting hits Q-RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+#endif
+
 
             memset(filtered_hits_x, 0x0000, n_hits_found * sizeof(uint32_t));
             memset(filtered_hits_y, 0x0000, n_hits_found * sizeof(uint32_t));
+
+            start = clock();
             uint32_t n_hits_kept = filter_hits_reverse(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
+
+            end = clock();
+#ifdef SHOWTIME
+            fprintf(stdout, "[INFO] filter hits Q-RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+#endif
 
             fprintf(stdout, "[INFO] Remaining hits %"PRIu32"\n", n_hits_kept);
 
@@ -1193,6 +1291,8 @@ int main(int argc, char ** argv)
 
 
             // ## POINTER SECTION 10
+
+            start = clock();
 
             address_checker = 0;
             base_ptr = &data_mem[0];
@@ -1253,7 +1353,10 @@ int main(int argc, char ** argv)
             ret = cudaMemcpy(host_left_offset, ptr_left_offset, n_hits_kept * sizeof(uint32_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back left offset. Error: %d\n", ret); exit(-1); }
             ret = cudaMemcpy(host_right_offset, ptr_right_offset, n_hits_kept * sizeof(uint32_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back right offset. Error: %d\n", ret); exit(-1); }
 
-            
+            end = clock();
+#ifdef SHOWTIME
+            fprintf(stdout, "[INFO] frags Q-RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+#endif
 
             /*           
             FILE * anything = fopen("onlyfrags-reverse.csv", "wt");

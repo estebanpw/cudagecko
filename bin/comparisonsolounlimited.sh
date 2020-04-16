@@ -34,14 +34,14 @@ distance=$((4*${WL}))
 # NOTICE: Frequency limit (FL) is ignored
 if [[ ! -f ../hits/${seqXName}-${seqYName}-K${WL}.hits.sorted.filtered ]]; then
 	echo "${BINDIR}/hits ${seqXName} ${seqYName} ${seqXName}-${seqYName}-K${WL}.hits ${FL} ${WL}"
-	${BINDIR}/hits ${seqXName} ${seqYName} ${seqXName}-${seqYName}-K${WL}.hits ${FL} ${WL}
+	time ${BINDIR}/hits ${seqXName} ${seqYName} ${seqXName}-${seqYName}-K${WL}.hits ${FL} ${WL}
 	
 	# Also only one core to sort
 	echo "${BINDIR}/sortHits 10000000 1 ${seqXName}-${seqYName}-K${WL}.hits ${seqXName}-${seqYName}-K${WL}.hits.sorted"
-	${BINDIR}/sortHits 10000000 1 ${seqXName}-${seqYName}-K${WL}.hits ${seqXName}-${seqYName}-K${WL}.hits.sorted
+	time ${BINDIR}/sortHits 10000000 1 ${seqXName}-${seqYName}-K${WL}.hits ${seqXName}-${seqYName}-K${WL}.hits.sorted
 	
 	echo "${BINDIR}/filterHits ${seqXName}-${seqYName}-K${WL}.hits.sorted ${seqXName}-${seqYName}-K${WL}.hits.sorted.filtered ${WL}"
-	${BINDIR}/filterHits ${seqXName}-${seqYName}-K${WL}.hits.sorted ${seqXName}-${seqYName}-K${WL}.hits.sorted.filtered ${WL}
+	time ${BINDIR}/filterHits ${seqXName}-${seqYName}-K${WL}.hits.sorted ${seqXName}-${seqYName}-K${WL}.hits.sorted.filtered ${WL}
 
 	mv ${seqXName}-${seqYName}-K${WL}.hits.sorted.filtered ../hits/
 fi
@@ -49,7 +49,7 @@ fi
 ln -s ../hits/${seqXName}-${seqYName}-K${WL}.hits.sorted.filtered .
 
 echo "${BINDIR}/FragHits $1 $2 ${seqXName}-${seqYName}-K${WL}.hits.sorted.filtered ${seqXName}-${seqYName}-s${strand}.frags ${length} ${similarity} ${WL} ${fixedL} ${strand}"
-${BINDIR}/FragHits $1 $2 ${seqXName}-${seqYName}-K${WL}.hits.sorted.filtered ${seqXName}-${seqYName}-s${strand}.frags ${length} ${similarity} ${WL} ${fixedL} ${strand}
+time ${BINDIR}/FragHits $1 $2 ${seqXName}-${seqYName}-K${WL}.hits.sorted.filtered ${seqXName}-${seqYName}-s${strand}.frags ${length} ${similarity} ${WL} ${fixedL} ${strand}
 
 echo "--------------------DONE------------------"
 

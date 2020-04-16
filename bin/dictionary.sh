@@ -17,11 +17,11 @@ seqName="${seqName%.*}"
 
 # find words and order
 echo "${BINDIR}/words $1 ${seqName}.words.unsort"
-(${BINDIR}/words $1 ${seqName}.words.unsort) &> log-words-$seqName
+${BINDIR}/words $1 ${seqName}.words.unsort
 echo "${BINDIR}/sortWords 10000000 32 ${seqName}.words.unsort ${seqName}.words.sort"
-(${BINDIR}/sortWords 10000000 32 ${seqName}.words.unsort ${seqName}.words.sort) &> log-sortwords-$seqName
+${BINDIR}/sortWords 10000000 32 ${seqName}.words.unsort ${seqName}.words.sort
 
 # Create hash table in disk
 echo "${BINDIR}/w2hd ${seqName}.words.sort ${seqName}"
-(${BINDIR}/w2hd ${seqName}.words.sort ${seqName}) &> log-hashtable-$seqName
+${BINDIR}/w2hd ${seqName}.words.sort ${seqName}
 

@@ -47,21 +47,21 @@ cd intermediateFiles/${seqXName}-${seqYName}
 
 
 echo "${BINDIR}/reverseComplement ${seqYName}.${extensionX} ${seqYName}-revercomp.${extensionY}"
-${BINDIR}/reverseComplement ${seqYName}.${extensionX} ${seqYName}-revercomp.${extensionY}
+time ${BINDIR}/reverseComplement ${seqYName}.${extensionX} ${seqYName}-revercomp.${extensionY}
 
 if [[ ! -f ../dictionaries/${seqXName}.d2hP ]];	then
 	echo "${BINDIR}/dictionarysolounlimited.sh ${seqXName}.${extensionX}"
-	${BINDIR}/dictionarysolounlimited.sh ${seqXName}.${extensionX}
+	time ${BINDIR}/dictionarysolounlimited.sh ${seqXName}.${extensionX}
 fi
 		
 if [[ ! -f ../dictionaries/${seqYName}.d2hP ]];	then
-	echo "${BINDIR}/dictionarysolounlimited.sh ${seqYName}.${extensionY} "
-	${BINDIR}/dictionarysolounlimited.sh ${seqYName}.${extensionY}
+    echo "${BINDIR}/dictionarysolounlimited.sh ${seqYName}.${extensionY}"
+    time ${BINDIR}/dictionarysolounlimited.sh ${seqYName}.${extensionY}
 fi
 		
 if [[ ! -f ../dictionaries/${seqYName}-revercomp.d2hP ]];	then
 	echo "${BINDIR}/dictionarysolounlimited.sh ${seqYName}-revercomp.${extensionY}"
-	${BINDIR}/dictionarysolounlimited.sh ${seqYName}-revercomp.${extensionY} 
+	time ${BINDIR}/dictionarysolounlimited.sh ${seqYName}-revercomp.${extensionY} 
 fi		
 
 
@@ -84,10 +84,8 @@ ln -s ../dictionaries/${seqYName}.d2hW .
 ln -s ../dictionaries/${seqYName}-revercomp.d2hP .
 ln -s ../dictionaries/${seqYName}-revercomp.d2hW .
 
-echo "${BINDIR}/comparisonsolounlimited.sh ${seqXName}.${extensionX} ${seqYName}.${extensionY} ${length} ${similarity} ${WL} ${fixedL} f"
 ${BINDIR}/comparisonsolounlimited.sh ${seqXName}.${extensionX} ${seqYName}.${extensionY} ${length} ${similarity} ${WL} ${fixedL} f
 
-echo "${BINDIR}/comparisonsolounlimited.sh ${seqXName}.${extensionX} ${seqYName}-revercomp.${extensionY} ${length} ${similarity} ${WL} ${fixedL} r"
 ${BINDIR}/comparisonsolounlimited.sh ${seqXName}.${extensionX} ${seqYName}-revercomp.${extensionY} ${length} ${similarity} ${WL} ${fixedL} r
 
 
@@ -95,7 +93,7 @@ ${BINDIR}/comparisonsolounlimited.sh ${seqXName}.${extensionX} ${seqYName}-rever
 #rm ${seqYName}-revercomp.${extensionY}
 
 echo "${BINDIR}/combineFrags ${seqXName}-${seqYName}-sf.frags ${seqXName}-${seqYName}-revercomp-sr.frags ${seqXName}-${seqYName}.frags"
-${BINDIR}/combineFrags ${seqXName}-${seqYName}-sf.frags ${seqXName}-${seqYName}-revercomp-sr.frags ${seqXName}-${seqYName}.frags
+time ${BINDIR}/combineFrags ${seqXName}-${seqYName}-sf.frags ${seqXName}-${seqYName}-revercomp-sr.frags ${seqXName}-${seqYName}.frags
 
 #echo "${BINDIR}/newFragToBalazsVersion ${seqXName}-${seqYName}.frags ${seqXName}-${seqYName}.old.frags"
 #${BINDIR}/newFragToBalazsVersion ${seqXName}-${seqYName}.frags ${seqXName}-${seqYName}.old.frags
@@ -106,8 +104,8 @@ ${BINDIR}/combineFrags ${seqXName}-${seqYName}-sf.frags ${seqXName}-${seqYName}-
 #Borramos todo menos los frags y los diccionarios
 
 # Get Info from frags 
-echo "${BINDIR}/getInfo ${seqXName}-${seqYName}.frags > ${seqXName}-${seqYName}.csv"
-${BINDIR}/getInfo ${seqXName}-${seqYName}.frags > ${seqXName}-${seqYName}.csv.tmp
+echo "${BINDIR}/getInfo ${seqXName}-${seqYName}.frags > ${seqXName}-${seqYName}.csv.tmp"
+time ${BINDIR}/getInfo ${seqXName}-${seqYName}.frags > ${seqXName}-${seqYName}.csv.tmp
 cat ${seqXName}-${seqYName}.frags.INF ${seqXName}-${seqYName}.csv.tmp > ${seqXName}-${seqYName}.csv
 rm -rf ${seqXName}-${seqYName}.csv.tmp
 	
@@ -132,4 +130,3 @@ mv ${seqXName}-${seqYName}.csv ../../results
 cd ..
 #rm -rf ${seqXName}-${seqYName}
 
-#} &> /dev/null

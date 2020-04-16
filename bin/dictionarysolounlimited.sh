@@ -16,11 +16,11 @@ seqName="${seqName%.*}"
 
 # find words and order
 echo "${BINDIR}/words $1 ${seqName}.words.unsort"
-${BINDIR}/words $1 ${seqName}.words.unsort
+time ${BINDIR}/words $1 ${seqName}.words.unsort
 echo "${BINDIR}/sortWords 10000000 1 ${seqName}.words.unsort ${seqName}.words.sort"
-${BINDIR}/sortWords 10000000 1 ${seqName}.words.unsort ${seqName}.words.sort
+time ${BINDIR}/sortWords 10000000 1 ${seqName}.words.unsort ${seqName}.words.sort
 
 # Create hash table in disk
 echo "${BINDIR}/w2hd ${seqName}.words.sort ${seqName}"
-${BINDIR}/w2hd ${seqName}.words.sort ${seqName}
+time ${BINDIR}/w2hd ${seqName}.words.sort ${seqName}
 
