@@ -71,13 +71,17 @@ int main(int argc, char ** argv)
 
     // Calculate how much ram we can use for every chunk
     uint32_t effective_global_ram =  (global_device_RAM - 100*1024*1024); //Minus 100 MBs for other stuff
-    effective_global_ram = global_device_RAM - 150*1024*1024;
 
+    if(fast == 1) factor = 0.5;
+    uint32_t bytes_for_words = (factor * effective_global_ram); // 512 MB for words
+    uint32_t words_at_once = bytes_for_words / (8+8+4+4); 
+    uint32_t max_hits = (effective_global_ram - bytes_for_words) / (8+8+4+4); // The rest for allocating hits
+    uint32_t bytes_to_subtract = max_hits * (8+4); // This removes the temporary buffers that are allocated on demand in thrust
     // We will do the one-time alloc here
     // i.e. allocate a pool once and used it manually
 
     char * data_mem;
-    ret = cudaMalloc(&data_mem, effective_global_ram * sizeof(char)); 
+    ret = cudaMalloc(&data_mem, (effective_global_ram - bytes_to_subtract) * sizeof(char)); 
     if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pool memory in device. Error: %d\n", ret); exit(-1); }
 
     // One workload depends on number of words (words + sortwords + generate hits)
@@ -89,10 +93,6 @@ int main(int argc, char ** argv)
     if(fast == 0) words_at_once = words_at_once/4;
     uint32_t max_hits = effective_global_ram - (words_at_once*8 + words_at_once*4);
     */
-    if(fast == 1) factor = 0.5;
-    uint32_t bytes_for_words = (factor * effective_global_ram); // 512 MB for words
-    uint32_t words_at_once = bytes_for_words / (8+8+4+4); 
-    uint32_t max_hits = (effective_global_ram - bytes_for_words) / (8+8+4+4); // The rest for allocating hits
 
 
 
@@ -592,10 +592,10 @@ int main(int argc, char ** argv)
         //ret = cudaDeviceSynchronize();
         //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on query. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
-        thrust::device_ptr<uint64_t> t_k(ptr_keys);
-        thrust::device_ptr<uint32_t> t_v(ptr_values);
+        thrust::device_ptr<uint64_t> t_k_words_query(ptr_keys);
+        thrust::device_ptr<uint32_t> t_v_words_query(ptr_values);
 
-        thrust::sort_by_key(t_k, t_k + items_read_x, t_v);
+        thrust::sort_by_key(t_k_words_query, t_k_words_query + items_read_x, t_v_words_query);
         ret = cudaDeviceSynchronize();
         if(ret != cudaSuccess){ fprintf(stderr, "THRUST sorting failed on query. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
         
@@ -740,11 +740,12 @@ int main(int argc, char ** argv)
             //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on ref. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
 
-            thrust::device_ptr<uint64_t> t_k_r(ptr_keys);
-            thrust::device_ptr<uint32_t> t_v_r(ptr_values);
+            thrust::device_ptr<uint64_t> t_k_words_ref(ptr_keys);
+            thrust::device_ptr<uint32_t> t_v_words_ref(ptr_values);
 
-            thrust::sort_by_key(t_k_r, t_k_r + items_read_y, t_v_r);
+            thrust::sort_by_key(t_k_words_ref, t_k_words_ref + items_read_y, t_v_words_ref);
             ret = cudaDeviceSynchronize();
+            if(ret != cudaSuccess){ fprintf(stderr, "THRUST sorting failed on ref words. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
 
             // Download sorted reference kmers
@@ -835,16 +836,16 @@ int main(int argc, char ** argv)
             base_ptr = &data_mem[0];
             address_checker = realign_address(address_checker, 8);
             uint64_t * ptr_device_diagonals = (uint64_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + max_hits * sizeof(uint64_t), 8);
-
-            uint64_t * ptr_device_diagonals_buf = (uint64_t *) (base_ptr + address_checker);
             address_checker = realign_address(address_checker + max_hits * sizeof(uint64_t), 4);
+
+            //uint64_t * ptr_device_diagonals_buf = (uint64_t *) (base_ptr + address_checker);
+            //address_checker = realign_address(address_checker + max_hits * sizeof(uint64_t), 4);
 
             uint32_t * ptr_device_hits = (uint32_t *) (base_ptr + address_checker);
             address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
 
-            uint32_t * ptr_device_hits_buf = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
+            //uint32_t * ptr_device_hits_buf = (uint32_t *) (base_ptr + address_checker);
+            //address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
             
 
             // We will actually sort the diagonals with associated values 0,1,2... to n and use these to index the hits array
@@ -854,28 +855,40 @@ int main(int argc, char ** argv)
             ret = cudaMemcpy(ptr_device_diagonals, diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyHostToDevice);
             if(ret != cudaSuccess){ fprintf(stderr, "Uploading device diagonals. Error: %d\n", ret); exit(-1); }
 
-            cub::DoubleBuffer<uint64_t> d_diagonals(ptr_device_diagonals, ptr_device_diagonals_buf);
-            cub::DoubleBuffer<uint32_t> d_hits(ptr_device_hits, ptr_device_hits_buf);
+            //cub::DoubleBuffer<uint64_t> d_diagonals(ptr_device_diagonals, ptr_device_diagonals_buf);
+            //cub::DoubleBuffer<uint32_t> d_hits(ptr_device_hits, ptr_device_hits_buf);
 
-            d_temp_storage = NULL;
-            temp_storage_bytes = 0;
-            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_diagonals, d_hits, n_hits_found);
-            ret = cudaDeviceSynchronize();
-            if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (3). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            thrust::device_ptr<uint64_t> t_k_hits_queryref(ptr_device_diagonals);
+            thrust::device_ptr<uint32_t> t_v_hits_queryref(ptr_device_hits);
+
+            //d_temp_storage = NULL;
+            //temp_storage_bytes = 0;
+
+            //cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_diagonals, d_hits, n_hits_found);
+            //ret = cudaDeviceSynchronize();
+            //if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (3). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
             // Allocate temporary storage
-            ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
-            if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for hits sorting (1). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            //ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for hits sorting (1). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
-            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_diagonals, d_hits, n_hits_found);
+            //cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_diagonals, d_hits, n_hits_found);
+            //ret = cudaDeviceSynchronize();
+            //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+
+
+            thrust::sort_by_key(t_k_hits_queryref, t_k_hits_queryref + n_hits_found, t_v_hits_queryref);
             ret = cudaDeviceSynchronize();
-            if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stderr, "THRUST sorting failed on query-ref hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
             // Download hits (actually just number indices)
-            ret = cudaMemcpy(indexing_numbers, ptr_device_hits_buf, n_hits_found*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+            //ret = cudaMemcpy(indexing_numbers, ptr_device_hits_buf, n_hits_found*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device hits. Error: %d\n", ret); exit(-1); }
+            //ret = cudaMemcpy(diagonals, ptr_device_diagonals_buf, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(indexing_numbers, ptr_device_hits, n_hits_found*sizeof(uint32_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device hits. Error: %d\n", ret); exit(-1); }
-
-            ret = cudaMemcpy(diagonals, ptr_device_diagonals_buf, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            ret = cudaMemcpy(diagonals, ptr_device_diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
 
             //
@@ -1102,37 +1115,53 @@ int main(int argc, char ** argv)
 
             start = clock();
 
-            address_checker = realign_address(address_checker, 8);
-            ptr_keys_buf = (uint64_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
+            //address_checker = realign_address(address_checker, 8);
+            //ptr_keys_buf = (uint64_t *) (base_ptr + address_checker);
+            //address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
 
-            ptr_values_buf = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
+            //ptr_values_buf = (uint32_t *) (base_ptr + address_checker);
+            //address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
 
-            ret = cudaMemset(ptr_keys_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
-            ret = cudaMemset(ptr_values_buf, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
-            cub::DoubleBuffer<uint64_t> d_keys_ref(ptr_keys, ptr_keys_buf);
-            cub::DoubleBuffer<uint32_t> d_values_ref(ptr_values, ptr_values_buf);
-            d_temp_storage = NULL;
-            temp_storage_bytes = 0;
-            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
-            ret = cudaDeviceSynchronize();
-            if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            //ret = cudaMemset(ptr_keys_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
+            //ret = cudaMemset(ptr_values_buf, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
+
+            //cub::DoubleBuffer<uint64_t> d_keys_ref(ptr_keys, ptr_keys_buf);
+            //cub::DoubleBuffer<uint32_t> d_values_ref(ptr_values, ptr_values_buf);
+
+            thrust::device_ptr<uint64_t> t_k_words_rev(ptr_keys);
+            thrust::device_ptr<uint32_t> t_v_words_rev(ptr_values);
+
+
+            //d_temp_storage = NULL;
+            //temp_storage_bytes = 0;
+            //cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
+            //ret = cudaDeviceSynchronize();
+            //if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+
 
             // Allocate temporary storage
-            ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
-            if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for words sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            //ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for words sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
-            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
+            //cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
+            //ret = cudaDeviceSynchronize();
+            //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on ref. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+
+            thrust::sort_by_key(t_k_words_rev, t_k_words_rev + items_read_y, t_v_words_rev);
             ret = cudaDeviceSynchronize();
-            if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on ref. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stderr, "THRUST sorting failed on words reverse. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+        
             
 
 
             // Download kmers
-            ret = cudaMemcpy(dict_y_keys, ptr_keys_buf, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            //ret = cudaMemcpy(dict_y_keys, ptr_keys_buf, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (3). Error: %d\n", ret); exit(-1); }
+            //ret = cudaMemcpy(dict_y_values, ptr_values_buf, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (4). Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(dict_y_keys, ptr_keys, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (3). Error: %d\n", ret); exit(-1); }
-            ret = cudaMemcpy(dict_y_values, ptr_values_buf, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+            ret = cudaMemcpy(dict_y_values, ptr_values, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (4). Error: %d\n", ret); exit(-1); }
 
             ret = cudaFree(d_temp_storage);
@@ -1195,16 +1224,16 @@ int main(int argc, char ** argv)
             address_checker = 0;
             address_checker = realign_address(address_checker, 8);
             uint64_t * ptr_device_diagonals = (uint64_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + max_hits * sizeof(uint64_t), 8);
-
-            uint64_t * ptr_device_diagonals_buf = (uint64_t *) (base_ptr + address_checker);
             address_checker = realign_address(address_checker + max_hits * sizeof(uint64_t), 4);
+
+            //uint64_t * ptr_device_diagonals_buf = (uint64_t *) (base_ptr + address_checker);
+            //address_checker = realign_address(address_checker + max_hits * sizeof(uint64_t), 4);
 
             uint32_t * ptr_device_hits = (uint32_t *) (base_ptr + address_checker);
             address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
 
-            uint32_t * ptr_device_hits_buf = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
+            //uint32_t * ptr_device_hits_buf = (uint32_t *) (base_ptr + address_checker);
+            //address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
 
             // We will actually sort the diagonals with associated values 0,1,2... to n and use these to index the hits array
             ret = cudaMemcpy(ptr_device_hits, ascending_numbers, n_hits_found*sizeof(uint32_t), cudaMemcpyHostToDevice);
@@ -1213,27 +1242,42 @@ int main(int argc, char ** argv)
             ret = cudaMemcpy(ptr_device_diagonals, diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyHostToDevice);
             if(ret != cudaSuccess){ fprintf(stderr, "Uploading device diagonals. Error: %d\n", ret); exit(-1); }
 
-            cub::DoubleBuffer<uint64_t> d_diagonals(ptr_device_diagonals, ptr_device_diagonals_buf);
-            cub::DoubleBuffer<uint32_t> d_hits(ptr_device_hits, ptr_device_hits_buf);
-            d_temp_storage = NULL;
-            temp_storage_bytes = 0;
-            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_diagonals, d_hits, n_hits_found);
-            ret = cudaDeviceSynchronize();
-            if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (3). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            //cub::DoubleBuffer<uint64_t> d_diagonals(ptr_device_diagonals, ptr_device_diagonals_buf);
+            //cub::DoubleBuffer<uint32_t> d_hits(ptr_device_hits, ptr_device_hits_buf);
+
+
+            thrust::device_ptr<uint64_t> t_k_hits_queryrev(ptr_device_diagonals);
+            thrust::device_ptr<uint32_t> t_v_hits_queryrev(ptr_device_hits);
+
+            //d_temp_storage = NULL;
+            //temp_storage_bytes = 0;
+            //cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_diagonals, d_hits, n_hits_found);
+            //ret = cudaDeviceSynchronize();
+            //if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (3). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
             // Allocate temporary storage
-            ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
-            if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for hits sorting (1). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            //ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for hits sorting (1). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
-            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_diagonals, d_hits, n_hits_found);
+            //cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_diagonals, d_hits, n_hits_found);
+            //ret = cudaDeviceSynchronize();
+            //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+
+            thrust::sort_by_key(t_k_hits_queryrev, t_k_hits_queryrev + n_hits_found, t_v_hits_queryrev);
             ret = cudaDeviceSynchronize();
-            if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stderr, "THRUST sorting failed on hits rev. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+        
+
+
             
             // Download hits (actually just number indices)
-            ret = cudaMemcpy(indexing_numbers, ptr_device_hits_buf, n_hits_found*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+            //ret = cudaMemcpy(indexing_numbers, ptr_device_hits_buf, n_hits_found*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device hits. Error: %d\n", ret); exit(-1); }
+            //ret = cudaMemcpy(diagonals, ptr_device_diagonals_buf, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(indexing_numbers, ptr_device_hits, n_hits_found*sizeof(uint32_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device hits. Error: %d\n", ret); exit(-1); }
-
-            ret = cudaMemcpy(diagonals, ptr_device_diagonals_buf, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            ret = cudaMemcpy(diagonals, ptr_device_diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
 
             end = clock();
