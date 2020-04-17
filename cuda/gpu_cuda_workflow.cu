@@ -3,8 +3,6 @@
 #include "kernels.cuh"
 #include "cpu_functions.c"
 #include "cub/cub.cuh"
-#include <thrust/sort.h>
-#include <thrust/device_ptr.h>
 //#define DIMENSION 1000
 
 
