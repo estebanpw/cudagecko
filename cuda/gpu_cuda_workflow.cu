@@ -71,7 +71,7 @@ int main(int argc, char ** argv)
 
     // Calculate how much ram we can use for every chunk
     uint32_t effective_global_ram =  (global_device_RAM - 100*1024*1024); //Minus 100 MBs for other stuff
-    effective_global_ram = global_device_RAM/2;
+    effective_global_ram = global_device_RAM - 150*1024*1024;
 
     // We will do the one-time alloc here
     // i.e. allocate a pool once and used it manually
@@ -700,18 +700,12 @@ int main(int argc, char ** argv)
 #endif
 
 
-            //cudaFree(seq_dev_mem);
 
             
 
             ////////////////////////////////////////////////////////////////////////////////
             // Sort reference FORWARD kmers
             ////////////////////////////////////////////////////////////////////////////////
-
-            //ret = cudaMalloc(&keys_buf, words_at_once * sizeof(uint64_t));
-            //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (3). Error: %d\n", ret); exit(-1); }
-            //ret = cudaMalloc(&values_buf, words_at_once * sizeof(uint32_t));
-            //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (4). Error: %d\n", ret); exit(-1); }
 
             // ## POINTER SECTION 4
 
@@ -724,37 +718,47 @@ int main(int argc, char ** argv)
             ptr_values_buf = (uint32_t *) (base_ptr + address_checker); // Each alloc adds on top of the previous one
             address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
 
-            ret = cudaMemset(ptr_keys_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
-            ret = cudaMemset(ptr_values_buf, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
+            //ret = cudaMemset(ptr_keys_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
+            //ret = cudaMemset(ptr_values_buf, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
 
-            cub::DoubleBuffer<uint64_t> d_keys_ref(ptr_keys, ptr_keys_buf);
-            cub::DoubleBuffer<uint32_t> d_values_ref(ptr_values, ptr_values_buf);
+            //cub::DoubleBuffer<uint64_t> d_keys_ref(ptr_keys, ptr_keys_buf);
+            //cub::DoubleBuffer<uint32_t> d_values_ref(ptr_values, ptr_values_buf);
 
-            d_temp_storage = NULL;
-            temp_storage_bytes = 0;
+            //d_temp_storage = NULL;
+            //temp_storage_bytes = 0;
 
-            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
-            ret = cudaDeviceSynchronize();
-            if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            //cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
+            //ret = cudaDeviceSynchronize();
+            //if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
             // Allocate temporary storage
-            ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
-            if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for words sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            //ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for words sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
-            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
+            //cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
+            //ret = cudaDeviceSynchronize();
+            //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on ref. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            
+
+            thrust::device_ptr<uint64_t> t_k_r(ptr_keys);
+            thrust::device_ptr<uint32_t> t_v_r(ptr_values);
+
+            thrust::sort_by_key(t_k_r, t_k_r + items_read_y, t_v_r);
             ret = cudaDeviceSynchronize();
-            if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on ref. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
-            
 
 
             // Download sorted reference kmers
-            ret = cudaMemcpy(dict_y_keys, ptr_keys_buf, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            //ret = cudaMemcpy(dict_y_keys, ptr_keys_buf, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (3). Error: %d\n", ret); exit(-1); }
+            //ret = cudaMemcpy(dict_y_values, ptr_values_buf, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (4). Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(dict_y_keys, ptr_keys, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (3). Error: %d\n", ret); exit(-1); }
-            ret = cudaMemcpy(dict_y_values, ptr_values_buf, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+            ret = cudaMemcpy(dict_y_values, ptr_values, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (4). Error: %d\n", ret); exit(-1); }
 
-            ret = cudaFree(d_temp_storage);
-            if(ret != cudaSuccess){ fprintf(stderr, "Bad free of temp storage (2): %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            //ret = cudaFree(d_temp_storage);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Bad free of temp storage (2): %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
             pos_in_ref += words_at_once;
 
