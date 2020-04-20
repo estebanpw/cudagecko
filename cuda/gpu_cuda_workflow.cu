@@ -3,6 +3,9 @@
 #include "kernels.cuh"
 #include "cpu_functions.c"
 #include "cub/cub.cuh"
+#include <moderngpu/kernel_mergesort.hxx>
+#include <thrust/sort.h>
+#include <thrust/device_ptr.h>
 //#define DIMENSION 1000
 
 
@@ -36,6 +39,7 @@ int main(int argc, char ** argv)
     uint64_t global_device_RAM;
     //int work_group_size_local;
     int ret;
+    mgpu::standard_context_t context;
     
     // Query how many devices there are
     if(cudaSuccess != (ret = cudaGetDeviceCount(&ret_num_devices))){ fprintf(stderr, "Failed to query number of devices\n"); exit(-1); }
@@ -575,8 +579,6 @@ int main(int argc, char ** argv)
         //cub::DoubleBuffer<uint64_t> d_keys(ptr_keys, ptr_keys_buf);
         //cub::DoubleBuffer<uint32_t> d_values(ptr_values, ptr_values_buf);
 
-        void * d_temp_storage = NULL;
-        size_t temp_storage_bytes = 0;
         //cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys, d_values, items_read_x);
         //ret = cudaDeviceSynchronize();
         //if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (1). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
@@ -590,13 +592,13 @@ int main(int argc, char ** argv)
         //ret = cudaDeviceSynchronize();
         //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on query. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
-        thrust::device_ptr<uint64_t> t_k_words_query(ptr_keys);
-        thrust::device_ptr<uint32_t> t_v_words_query(ptr_values);
 
-        thrust::sort_by_key(t_k_words_query, t_k_words_query + items_read_x, t_v_words_query);
-        ret = cudaDeviceSynchronize();
-        if(ret != cudaSuccess){ fprintf(stderr, "THRUST sorting failed on query. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
         
+
+        mergesort(ptr_keys, ptr_values, items_read_x, mgpu::less_t<uint64_t>(), context);
+        ret = cudaDeviceSynchronize();
+        if(ret != cudaSuccess){ fprintf(stderr, "MERGESORT sorting failed on query. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+
 
         // Download sorted kmers
         //ret = cudaMemcpyAsync(dict_x_keys, ptr_keys_buf, items_read_x*sizeof(uint64_t), cudaMemcpyDeviceToHost, streams[0]);
@@ -736,14 +738,16 @@ int main(int argc, char ** argv)
             //cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
             //ret = cudaDeviceSynchronize();
             //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on ref. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
-            
 
-            thrust::device_ptr<uint64_t> t_k_words_ref(ptr_keys);
-            thrust::device_ptr<uint32_t> t_v_words_ref(ptr_values);
 
-            thrust::sort_by_key(t_k_words_ref, t_k_words_ref + items_read_y, t_v_words_ref);
+            mergesort(ptr_keys, ptr_values, items_read_y, mgpu::less_t<uint64_t>(), context);            
+
+            //thrust::device_ptr<uint64_t> t_k_words_ref(ptr_keys);
+            //thrust::device_ptr<uint32_t> t_v_words_ref(ptr_values);
+
+            //thrust::sort_by_key(t_k_words_ref, t_k_words_ref + items_read_y, t_v_words_ref);
             ret = cudaDeviceSynchronize();
-            if(ret != cudaSuccess){ fprintf(stderr, "THRUST sorting failed on ref words. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stderr, "MODERNGPU sorting failed on ref words. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
 
             // Download sorted reference kmers
@@ -856,8 +860,10 @@ int main(int argc, char ** argv)
             //cub::DoubleBuffer<uint64_t> d_diagonals(ptr_device_diagonals, ptr_device_diagonals_buf);
             //cub::DoubleBuffer<uint32_t> d_hits(ptr_device_hits, ptr_device_hits_buf);
 
-            thrust::device_ptr<uint64_t> t_k_hits_queryref(ptr_device_diagonals);
-            thrust::device_ptr<uint32_t> t_v_hits_queryref(ptr_device_hits);
+            //thrust::device_ptr<uint64_t> t_k_hits_queryref(ptr_device_diagonals);
+            //thrust::device_ptr<uint32_t> t_v_hits_queryref(ptr_device_hits);
+
+            mergesort(ptr_device_diagonals, ptr_device_hits, n_hits_found, mgpu::less_t<uint64_t>(), context);
 
             //d_temp_storage = NULL;
             //temp_storage_bytes = 0;
@@ -875,9 +881,9 @@ int main(int argc, char ** argv)
             //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
 
-            thrust::sort_by_key(t_k_hits_queryref, t_k_hits_queryref + n_hits_found, t_v_hits_queryref);
+            //thrust::sort_by_key(t_k_hits_queryref, t_k_hits_queryref + n_hits_found, t_v_hits_queryref);
             ret = cudaDeviceSynchronize();
-            if(ret != cudaSuccess){ fprintf(stderr, "THRUST sorting failed on query-ref hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stderr, "MODERNGPU sorting failed on query-ref hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
             // Download hits (actually just number indices)
             //ret = cudaMemcpy(indexing_numbers, ptr_device_hits_buf, n_hits_found*sizeof(uint32_t), cudaMemcpyDeviceToHost);
@@ -918,7 +924,7 @@ int main(int argc, char ** argv)
                 //fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,32,32,32,1.0,1.0,0,0\n", filtered_hits_x[i], filtered_hits_y[i], filtered_hits_x[i]+32, filtered_hits_y[i]+32);
             //}
             
-            ret = cudaFree(d_temp_storage);
+            //ret = cudaFree(d_temp_storage);
             //ret = cudaFree(device_hits);
             //ret = cudaFree(device_diagonals);
             //ret = cudaFree(device_diagonals_buf);
@@ -1126,8 +1132,8 @@ int main(int argc, char ** argv)
             //cub::DoubleBuffer<uint64_t> d_keys_ref(ptr_keys, ptr_keys_buf);
             //cub::DoubleBuffer<uint32_t> d_values_ref(ptr_values, ptr_values_buf);
 
-            thrust::device_ptr<uint64_t> t_k_words_rev(ptr_keys);
-            thrust::device_ptr<uint32_t> t_v_words_rev(ptr_values);
+            //thrust::device_ptr<uint64_t> t_k_words_rev(ptr_keys);
+            //thrust::device_ptr<uint32_t> t_v_words_rev(ptr_values);
 
 
             //d_temp_storage = NULL;
@@ -1145,9 +1151,10 @@ int main(int argc, char ** argv)
             //ret = cudaDeviceSynchronize();
             //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on ref. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
-            thrust::sort_by_key(t_k_words_rev, t_k_words_rev + items_read_y, t_v_words_rev);
+            //thrust::sort_by_key(t_k_words_rev, t_k_words_rev + items_read_y, t_v_words_rev);
+            mergesort(ptr_keys, ptr_values, items_read_y, mgpu::less_t<uint64_t>(), context);
             ret = cudaDeviceSynchronize();
-            if(ret != cudaSuccess){ fprintf(stderr, "THRUST sorting failed on words reverse. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stderr, "MODERNGPU sorting failed on words reverse. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
         
             
 
@@ -1162,8 +1169,8 @@ int main(int argc, char ** argv)
             ret = cudaMemcpy(dict_y_values, ptr_values, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (4). Error: %d\n", ret); exit(-1); }
 
-            ret = cudaFree(d_temp_storage);
-            if(ret != cudaSuccess){ fprintf(stderr, "Bad free of temp storage (2): %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            //ret = cudaFree(d_temp_storage);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Bad free of temp storage (2): %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
             pos_in_ref += words_at_once;
 
@@ -1244,8 +1251,8 @@ int main(int argc, char ** argv)
             //cub::DoubleBuffer<uint32_t> d_hits(ptr_device_hits, ptr_device_hits_buf);
 
 
-            thrust::device_ptr<uint64_t> t_k_hits_queryrev(ptr_device_diagonals);
-            thrust::device_ptr<uint32_t> t_v_hits_queryrev(ptr_device_hits);
+            //thrust::device_ptr<uint64_t> t_k_hits_queryrev(ptr_device_diagonals);
+            //thrust::device_ptr<uint32_t> t_v_hits_queryrev(ptr_device_hits);
 
             //d_temp_storage = NULL;
             //temp_storage_bytes = 0;
@@ -1261,9 +1268,10 @@ int main(int argc, char ** argv)
             //ret = cudaDeviceSynchronize();
             //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
-            thrust::sort_by_key(t_k_hits_queryrev, t_k_hits_queryrev + n_hits_found, t_v_hits_queryrev);
+            //thrust::sort_by_key(t_k_hits_queryrev, t_k_hits_queryrev + n_hits_found, t_v_hits_queryrev);
+            mergesort(ptr_device_diagonals, ptr_device_hits, n_hits_found, mgpu::less_t<uint64_t>(), context);
             ret = cudaDeviceSynchronize();
-            if(ret != cudaSuccess){ fprintf(stderr, "THRUST sorting failed on hits rev. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stderr, "MODERNGPU sorting failed on hits rev. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
         
 
 
@@ -1320,7 +1328,7 @@ int main(int argc, char ** argv)
             
             
             
-            ret = cudaFree(d_temp_storage);
+            //ret = cudaFree(d_temp_storage);
             //ret = cudaFree(device_hits);
             //ret = cudaFree(device_diagonals);
             //ret = cudaFree(device_diagonals_buf);
