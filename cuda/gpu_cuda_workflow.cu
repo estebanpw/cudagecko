@@ -123,8 +123,31 @@ int main(int argc, char ** argv)
     //else { fprintf(stdout, "[INFO] Shared memory configuration is: %s\n", (shared_mem_conf == cudaSharedMemBankSizeFourByte) ? ("4 bytes") : ("8 bytes")); }
 
     // Load DNA sequences
-    uint32_t query_len = get_seq_len(query);
-    uint32_t ref_len = get_seq_len(ref);
+    //uint32_t query_len = get_seq_len(query);
+    //uint32_t ref_len = get_seq_len(ref);
+
+
+    // Load faster
+    fseek(query, 0L, SEEK_END);
+    uint32_t coarse_query_len = (uint32_t) ftell(query);
+    rewind(query);
+    char * s_buffer = (char *) malloc(coarse_query_len * sizeof(char)); if(s_buffer == NULL) {fprintf(stderr, "Bad loading buffer (1)\n"); exit(-1);}
+    char * pro_q_buffer = (char *) malloc(coarse_query_len * sizeof(char));  if(pro_q_buffer == NULL) {fprintf(stderr, "Bad loading buffer (2)\n"); exit(-1);}
+    uint32_t read_bytes = (uint32_t) fread(s_buffer, 1, coarse_query_len, query); if(read_bytes < coarse_query_len) {fprintf(stderr, "Bad bytes reading (1)\n"); exit(-1);}
+    uint32_t query_len = from_ram_load(s_buffer, pro_q_buffer, coarse_query_len);
+
+    free(s_buffer);
+
+    fseek(ref, 0L, SEEK_END);
+    uint32_t coarse_ref_len = (uint32_t) ftell(ref);
+    rewind(ref);
+    s_buffer = (char *) malloc(coarse_ref_len * sizeof(char));  if(s_buffer == NULL) {fprintf(stderr, "Bad loading buffer (3)\n"); exit(-1);}
+    char * pro_r_buffer = (char *) malloc(coarse_ref_len * sizeof(char));  if(pro_r_buffer == NULL) {fprintf(stderr, "Bad loading buffer (4)\n"); exit(-1);}
+    read_bytes = (uint32_t) fread(s_buffer, 1, coarse_ref_len, ref); if(read_bytes < coarse_ref_len) {fprintf(stderr, "Bad bytes reading (2)\n"); exit(-1);}
+    uint32_t ref_len = from_ram_load(s_buffer, pro_r_buffer, coarse_ref_len);
+
+    free(s_buffer);
+
 
     fprintf(stdout, "[INFO] Qlen: %"PRIu32"; Rlen: %"PRIu32"\n", query_len, ref_len);
 
@@ -202,12 +225,17 @@ int main(int argc, char ** argv)
     char * seq_dev_mem = NULL, * seq_dev_mem_aux = NULL;
 
     fprintf(stdout, "[INFO] Loading query\n");
-    load_seq(query, query_seq_host);
+    //load_seq(query, query_seq_host);
+    memcpy(query_seq_host, pro_q_buffer, query_len);
     fprintf(stdout, "[INFO] Loading reference\n");
 
     start = clock();
-    load_seq(ref, ref_seq_host);
+    //load_seq(ref, ref_seq_host);
+    memcpy(ref_seq_host, pro_r_buffer, ref_len);
     fprintf(stdout, "[INFO] Reversing reference\n");
+
+    free(pro_q_buffer);
+    free(pro_r_buffer);
     
     /*
     ret = cudaMalloc(&seq_dev_mem_aux, ref_len * sizeof(char)); 

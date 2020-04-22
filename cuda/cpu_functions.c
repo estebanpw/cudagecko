@@ -665,6 +665,28 @@ uint32_t load_seq(FILE * f, char * seq) {
     return l;
 }
 
+uint32_t from_ram_load(char * ram, char * dst, uint32_t size) {
+    char c = '\0';
+    uint32_t l = 0;
+    uint32_t real_l = 0;
+
+    while(l<size){
+        c = ram[l++];
+
+        if(c == '>'){
+            while(c != '\n') c = ram[l++];
+        }
+        c = toupper(c);
+        if(c >= 'A' && c <= 'Z'){
+            dst[real_l++] = c;
+        }
+    }
+
+
+    return real_l;
+}
+
+
 void Qsort(uint64_t * keys, uint64_t * values, int64_t x, int64_t y) {
     
     uint64_t pivote_k, aux_k, aux_val;

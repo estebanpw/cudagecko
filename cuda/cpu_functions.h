@@ -14,6 +14,7 @@ void print_kmers_to_file(uint64_t * keys, uint64_t * values, uint64_t table_size
 char * get_dirname(char * path);
 char * get_basename(char * path);
 uint32_t load_seq(FILE * f, char * seq);
+uint32_t from_ram_load(char * ram, char * dst, uint32_t size);
 uint32_t get_seq_len(FILE * f);
 void terror(const char * s);
 void Qsort(uint64_t * keys, uint64_t * values, int64_t x, int64_t y);
