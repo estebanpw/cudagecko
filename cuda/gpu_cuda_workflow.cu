@@ -15,6 +15,7 @@
 //uint64_t filter_hits(hit_advanced * hits_in, ulong kmer_size, ulong n_hits_found);
 void print_header(FILE * out, uint32_t query_len, uint32_t ref_len);
 
+
 int main(int argc, char ** argv)
 {
     uint32_t i, min_length = 64, max_frequency = 0;
@@ -69,7 +70,7 @@ int main(int argc, char ** argv)
 
 
     // Calculate how much ram we can use for every chunk
-    uint32_t effective_global_ram =  (global_device_RAM - 100*1024*1024); //Minus 100 MBs for other stuff
+    uint64_t effective_global_ram =  (global_device_RAM - 100*1024*1024); //Minus 100 MBs for other stuff
 
     // We will do the one-time alloc here
     // i.e. allocate a pool once and used it manually
@@ -88,16 +89,15 @@ int main(int argc, char ** argv)
     uint32_t max_hits = effective_global_ram - (words_at_once*8 + words_at_once*4);
     */
     if(fast == 1) factor = 0.5;
-    uint32_t bytes_for_words = (factor * effective_global_ram); // 512 MB for words
-    uint32_t words_at_once = bytes_for_words / (8+8+4+4); 
-    uint32_t max_hits = (effective_global_ram - bytes_for_words) / (8+8+4+4); // The rest for allocating hits
-
+    uint64_t bytes_for_words = (factor * effective_global_ram); // 512 MB for words
+    uint64_t words_at_once = bytes_for_words / (8+8+4+4); 
+    uint64_t max_hits = (effective_global_ram - bytes_for_words) / (8+8+4+4); // The rest for allocating hits
 
 
 
     uint64_t * keys, * keys_buf; 
     uint32_t * values, * values_buf;
-    fprintf(stdout, "[INFO] You can have %"PRIu32" MB for words (i.e. %"PRIu32" words), and %"PRIu32" MB for hits (i.e. %"PRIu32" hits)\n", 
+    fprintf(stdout, "[INFO] You can have %"PRIu64" MB for words (i.e. %"PRIu64" words), and %"PRIu64" MB for hits (i.e. %"PRIu64" hits)\n", 
         bytes_for_words / (1024*1024), words_at_once, (effective_global_ram - bytes_for_words) / (1024*1024), max_hits);
 
     fprintf(stdout, "[INFO] Filtering at a minimum length of %"PRIu32" bps\n", min_length);
