@@ -151,6 +151,34 @@ int main(int argc, char ** argv)
 
     fprintf(stdout, "[INFO] Qlen: %"PRIu32"; Rlen: %"PRIu32"\n", query_len, ref_len);
 
+
+    // Allocate memory on the host to store all splits of words for the reference and reversed reference
+    uint32_t total_ref_splits    = ref_len / words_at_once;
+    uint64_t * ref_sorted_words = (uint64_t *) malloc(ref_len * sizeof(uint64_t));
+    uint32_t * ref_sorted_pos   = (uint32_t *) malloc(ref_len * sizeof(uint32_t));
+    if(ref_sorted_words == NULL || ref_sorted_pos == NULL) { fprintf(stderr, "Bad alloc of reusable buffer (1)\n"); exit(-1); }
+
+    /*
+    for(i=0; i<total_ref_splits; i++){
+        ref_sorted_words[i] = (uint64_t *) malloc(words_at_once * sizeof(uint64_t));
+        ref_sorted_pos[i]   = (uint32_t *) malloc(words_at_once * sizeof(uint32_t));
+        if(ref_sorted_words[i] == NULL || ref_sorted_pos[i] == NULL) { fprintf(stderr, "Bad alloc of reusable buffer (2)\n"); exit(-1); }
+    }
+    */
+
+    uint64_t * refcomp_sorted_words = (uint64_t *) malloc(ref_len * sizeof(uint64_t));
+    uint32_t * refcomp_sorted_pos   = (uint32_t *) malloc(ref_len * sizeof(uint32_t));
+    if(refcomp_sorted_words == NULL || refcomp_sorted_pos == NULL) { fprintf(stderr, "Bad alloc of reusable buffer (3)\n"); exit(-1); }
+    /*
+    for(i=0; i<total_ref_splits; i++){
+        refcomp_sorted_words[i] = (uint64_t *) malloc(words_at_once * sizeof(uint64_t));
+        refcomp_sorted_pos[i]   = (uint32_t *) malloc(words_at_once * sizeof(uint32_t));
+        if(refcomp_sorted_words[i] == NULL || refcomp_sorted_pos[i] == NULL) { fprintf(stderr, "Bad alloc of reusable buffer (4)\n"); exit(-1); }
+    }
+    */
+
+    
+
     // Check that sequence length complies
     if(MAX(query_len, ref_len) >= 2147483648){
         fprintf(stdout, "[WARNING] !!!!!!!!!!!!!!!!!!!!!!\n");
@@ -675,117 +703,129 @@ int main(int argc, char ** argv)
 
             uint32_t items_read_y = MIN(ref_len - pos_in_ref, words_at_once);
 
-            //ret = cudaMalloc(&seq_dev_mem, words_at_once * sizeof(char));
-
-            // Allocate words table
-            //ret = cudaMalloc(&keys, words_at_once * sizeof(uint64_t));
-            //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (1). Error: %d\n", ret); exit(-1); }
-            //ret = cudaMalloc(&values, words_at_once * sizeof(uint32_t));
-            //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (2). Error: %d\n", ret); exit(-1); }
-
-            // ## POINTER SECTION 3
-            ptr_seq_dev_mem = &data_mem[0];
-            base_ptr = ptr_seq_dev_mem;
-            address_checker = realign_address(words_at_once, 8);
-
-            ptr_keys = (uint64_t *) (base_ptr + address_checker); // We have to realign because of the arbitrary length of the sequence chars
-            address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
-
-            ptr_values = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
+            if(split == 0){
+    
+                //ret = cudaMalloc(&seq_dev_mem, words_at_once * sizeof(char));
+    
+                // Allocate words table
+                //ret = cudaMalloc(&keys, words_at_once * sizeof(uint64_t));
+                //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (1). Error: %d\n", ret); exit(-1); }
+                //ret = cudaMalloc(&values, words_at_once * sizeof(uint32_t));
+                //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (2). Error: %d\n", ret); exit(-1); }
+    
+                // ## POINTER SECTION 3
+                ptr_seq_dev_mem = &data_mem[0];
+                base_ptr = ptr_seq_dev_mem;
+                address_checker = realign_address(words_at_once, 8);
+    
+                ptr_keys = (uint64_t *) (base_ptr + address_checker); // We have to realign because of the arbitrary length of the sequence chars
+                address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
+                
+                ptr_values = (uint32_t *) (base_ptr + address_checker);
+                address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
             
 
-            // Load sequence chunk into ram
-            ret = cudaMemcpy(ptr_seq_dev_mem, &ref_seq_host[pos_in_ref], items_read_y, cudaMemcpyHostToDevice);
-            if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device. Error: %d\n", ret); exit(-1); }
+                // Load sequence chunk into ram
+                ret = cudaMemcpy(ptr_seq_dev_mem, &ref_seq_host[pos_in_ref], items_read_y, cudaMemcpyHostToDevice);
+                if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device. Error: %d\n", ret); exit(-1); }
 
-            // Run kmers
-            ret = cudaMemset(ptr_keys, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
-            ret = cudaMemset(ptr_values, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
-            //number_of_blocks = (((items_read_y - KMER_SIZE + 1)) / (threads_number*4)); 
-            //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
+                // Run kmers
+                ret = cudaMemset(ptr_keys, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
+                ret = cudaMemset(ptr_values, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
+                //number_of_blocks = (((items_read_y - KMER_SIZE + 1)) / (threads_number*4)); 
+                //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
             
-            number_of_blocks = ((items_read_y - KMER_SIZE + 1))/(64);
-            if(number_of_blocks != 0)
-            {
+                number_of_blocks = ((items_read_y - KMER_SIZE + 1))/(64);
+                if(number_of_blocks != 0)
+                {
 
-                kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref);
-            
-                //number_of_blocks = ((items_read_y - KMER_SIZE + 1))/threads_number;
-                //kernel_index_global32<<<number_of_blocks, threads_number>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref);
+                    kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref);
+                
+                    //number_of_blocks = ((items_read_y - KMER_SIZE + 1))/threads_number;
+                    //kernel_index_global32<<<number_of_blocks, threads_number>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref);
+                    ret = cudaDeviceSynchronize();
+                    if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on ref. Error: %d\n", ret); exit(-1); }
+    
+                }
+    
+                end = clock();
+#ifdef SHOWTIME
+                fprintf(stdout, "[INFO] words R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+#endif
+    
+        
+                //cudaFree(seq_dev_mem);
+    
+                
+
+                ////////////////////////////////////////////////////////////////////////////////
+                // Sort reference FORWARD kmers
+                ////////////////////////////////////////////////////////////////////////////////
+
+                //ret = cudaMalloc(&keys_buf, words_at_once * sizeof(uint64_t));
+                //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (3). Error: %d\n", ret); exit(-1); }
+                //ret = cudaMalloc(&values_buf, words_at_once * sizeof(uint32_t));
+                //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (4). Error: %d\n", ret); exit(-1); }
+
+                // ## POINTER SECTION 4
+
+                start = clock();
+        
+                address_checker = realign_address(address_checker, 8);
+                ptr_keys_buf = (uint64_t *) (base_ptr + address_checker);
+                address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
+
+                ptr_values_buf = (uint32_t *) (base_ptr + address_checker); // Each alloc adds on top of the previous one
+                address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
+
+                ret = cudaMemset(ptr_keys_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
+                ret = cudaMemset(ptr_values_buf, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
+
+                cub::DoubleBuffer<uint64_t> d_keys_ref(ptr_keys, ptr_keys_buf);
+                cub::DoubleBuffer<uint32_t> d_values_ref(ptr_values, ptr_values_buf);
+
+                d_temp_storage = NULL;
+                temp_storage_bytes = 0;
+
+                cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
                 ret = cudaDeviceSynchronize();
-                if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on ref. Error: %d\n", ret); exit(-1); }
+                if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+
+                // Allocate temporary storage
+                ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
+                if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for words sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            
+                cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
+                ret = cudaDeviceSynchronize();
+                if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on ref. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            
+
+
+                // Download sorted reference kmers
+                ret = cudaMemcpy(dict_y_keys, ptr_keys_buf, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+                if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (3). Error: %d\n", ret); exit(-1); }
+                ret = cudaMemcpy(dict_y_values, ptr_values_buf, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+                if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (4). Error: %d\n", ret); exit(-1); }
+
+                ret = cudaFree(d_temp_storage);
+                if(ret != cudaSuccess){ fprintf(stderr, "Bad free of temp storage (2): %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+
+                memcpy(&ref_sorted_words[pos_in_ref], dict_y_keys, items_read_y * sizeof(uint64_t));
+                memcpy(&ref_sorted_pos[pos_in_ref], dict_y_values, items_read_y * sizeof(uint32_t));
+
+                end = clock();
+#ifdef SHOWTIME
+                fprintf(stdout, "[INFO] sort words R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+#endif
+            }else{
+
+                // Simply copy the corresponding split to dict_y_keys and dict_y_values
+                memcpy(dict_y_keys, &ref_sorted_words[pos_in_ref], items_read_y * sizeof(uint64_t));
+                memcpy(dict_y_values, &ref_sorted_pos[pos_in_ref], items_read_y * sizeof(uint32_t));
 
             }
 
-            end = clock();
-#ifdef SHOWTIME
-            fprintf(stdout, "[INFO] words R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
-#endif
-
-
-            //cudaFree(seq_dev_mem);
-
-            
-
-            ////////////////////////////////////////////////////////////////////////////////
-            // Sort reference FORWARD kmers
-            ////////////////////////////////////////////////////////////////////////////////
-
-            //ret = cudaMalloc(&keys_buf, words_at_once * sizeof(uint64_t));
-            //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (3). Error: %d\n", ret); exit(-1); }
-            //ret = cudaMalloc(&values_buf, words_at_once * sizeof(uint32_t));
-            //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (4). Error: %d\n", ret); exit(-1); }
-
-            // ## POINTER SECTION 4
-
-            start = clock();
-        
-            address_checker = realign_address(address_checker, 8);
-            ptr_keys_buf = (uint64_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
-
-            ptr_values_buf = (uint32_t *) (base_ptr + address_checker); // Each alloc adds on top of the previous one
-            address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
-
-            ret = cudaMemset(ptr_keys_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
-            ret = cudaMemset(ptr_values_buf, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
-
-            cub::DoubleBuffer<uint64_t> d_keys_ref(ptr_keys, ptr_keys_buf);
-            cub::DoubleBuffer<uint32_t> d_values_ref(ptr_values, ptr_values_buf);
-
-            d_temp_storage = NULL;
-            temp_storage_bytes = 0;
-
-            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
-            ret = cudaDeviceSynchronize();
-            if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
-
-            // Allocate temporary storage
-            ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
-            if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for words sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
-            
-            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
-            ret = cudaDeviceSynchronize();
-            if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on ref. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
-            
-
-
-            // Download sorted reference kmers
-            ret = cudaMemcpy(dict_y_keys, ptr_keys_buf, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
-            if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (3). Error: %d\n", ret); exit(-1); }
-            ret = cudaMemcpy(dict_y_values, ptr_values_buf, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
-            if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (4). Error: %d\n", ret); exit(-1); }
-
-            ret = cudaFree(d_temp_storage);
-            if(ret != cudaSuccess){ fprintf(stderr, "Bad free of temp storage (2): %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
-
             pos_in_ref += words_at_once;
-
-            end = clock();
-#ifdef SHOWTIME
-            fprintf(stdout, "[INFO] sort words R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
-#endif
 
 
             ////////////////////////////////////////////////////////////////////////////////
@@ -1055,115 +1095,110 @@ int main(int argc, char ** argv)
 
             uint32_t items_read_y = MIN(ref_len - pos_in_ref, words_at_once);
 
-            //ret = cudaMalloc(&seq_dev_mem, words_at_once * sizeof(char));
+            if(split == 0){
 
-            // Allocate words table
-            //ret = cudaMalloc(&keys, words_at_once * sizeof(uint64_t));
-            //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (1). Error: %d\n", ret); exit(-1); }
-            //ret = cudaMalloc(&values, words_at_once * sizeof(uint32_t));
-            //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (2). Error: %d\n", ret); exit(-1); }
+                // ## POINTER SECTION 7
+
+                start = clock();
+
+                address_checker = 0;
+                base_ptr = &data_mem[0];
+                ptr_seq_dev_mem = (char *) (base_ptr);
+                address_checker = realign_address(address_checker + words_at_once, 8);
+
+                ptr_keys = (uint64_t *) (base_ptr + address_checker);
+                address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
+
+                ptr_values = (uint32_t *) (base_ptr + address_checker);
+                address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
+
+
+                // Load sequence chunk into ram
+                ret = cudaMemcpy(ptr_seq_dev_mem, &ref_rev_seq_host[pos_in_ref], items_read_y, cudaMemcpyHostToDevice);
+                if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device reversed. Error: %d\n", ret); exit(-1); }
+
+                // Run kmers
+                ret = cudaMemset(ptr_keys, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
+                ret = cudaMemset(ptr_values, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
             
-            // ## POINTER SECTION 7
+                 number_of_blocks = ((items_read_y - KMER_SIZE + 1))/64;
 
-            start = clock();
-
-            address_checker = 0;
-            base_ptr = &data_mem[0];
-            ptr_seq_dev_mem = (char *) (base_ptr);
-            address_checker = realign_address(address_checker + words_at_once, 8);
-
-            ptr_keys = (uint64_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
-
-            ptr_values = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
-
-
-            // Load sequence chunk into ram
-            ret = cudaMemcpy(ptr_seq_dev_mem, &ref_rev_seq_host[pos_in_ref], items_read_y, cudaMemcpyHostToDevice);
-            if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device reversed. Error: %d\n", ret); exit(-1); }
-
-            // Run kmers
-            ret = cudaMemset(ptr_keys, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
-            ret = cudaMemset(ptr_values, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
-            //number_of_blocks = (((items_read_y - KMER_SIZE + 1)) / (threads_number*4)); 
-            //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
-            
-            number_of_blocks = ((items_read_y - KMER_SIZE + 1))/64;
-
-            if(number_of_blocks != 0)
-            {
-                kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref);
+                if(number_of_blocks != 0)
+                {
+                    kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref);
                 
-                //number_of_blocks = ((items_read_y - KMER_SIZE + 1))/threads_number;
-                //kernel_index_global32<<<number_of_blocks, threads_number>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref);
-    
-                ret = cudaDeviceSynchronize();
-                if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on ref reversed. Error: %d\n", ret); exit(-1); }
-            }
+                    ret = cudaDeviceSynchronize();
+                    if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on ref reversed. Error: %d\n", ret); exit(-1); }
+                }
 
-            end = clock();
+                end = clock();
 #ifdef SHOWTIME
-            fprintf(stdout, "[INFO] words RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+                fprintf(stdout, "[INFO] words RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
 #endif
 
-            //cudaFree(seq_dev_mem);
 
-            ////////////////////////////////////////////////////////////////////////////////
-            // Sort reference FORWARD kmers BUT REVERSED !
-            ////////////////////////////////////////////////////////////////////////////////
+                ////////////////////////////////////////////////////////////////////////////////
+                // Sort reference FORWARD kmers BUT REVERSED !
+                ////////////////////////////////////////////////////////////////////////////////
 
-            //ret = cudaMalloc(&keys_buf, words_at_once * sizeof(uint64_t));
-            //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (3). Error: %d\n", ret); exit(-1); }
-            //ret = cudaMalloc(&values_buf, words_at_once * sizeof(uint32_t));
-            //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (4). Error: %d\n", ret); exit(-1); }
+                // ## POINTER SECTION 8
 
-            // ## POINTER SECTION 8
+                start = clock();
 
-            start = clock();
+                address_checker = realign_address(address_checker, 8);
+                ptr_keys_buf = (uint64_t *) (base_ptr + address_checker);
+                address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
 
-            address_checker = realign_address(address_checker, 8);
-            ptr_keys_buf = (uint64_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
+                ptr_values_buf = (uint32_t *) (base_ptr + address_checker);
+                address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
 
-            ptr_values_buf = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
+                ret = cudaMemset(ptr_keys_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
+                ret = cudaMemset(ptr_values_buf, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
+                cub::DoubleBuffer<uint64_t> d_keys_ref(ptr_keys, ptr_keys_buf);
+                cub::DoubleBuffer<uint32_t> d_values_ref(ptr_values, ptr_values_buf);
+                d_temp_storage = NULL;
+                temp_storage_bytes = 0;
+                cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
+                ret = cudaDeviceSynchronize();
+                if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
-            ret = cudaMemset(ptr_keys_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
-            ret = cudaMemset(ptr_values_buf, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
-            cub::DoubleBuffer<uint64_t> d_keys_ref(ptr_keys, ptr_keys_buf);
-            cub::DoubleBuffer<uint32_t> d_values_ref(ptr_values, ptr_values_buf);
-            d_temp_storage = NULL;
-            temp_storage_bytes = 0;
-            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
-            ret = cudaDeviceSynchronize();
-            if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
-
-            // Allocate temporary storage
-            ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
-            if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for words sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+                // Allocate temporary storage
+                ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
+                if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for words sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
-            cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
-            ret = cudaDeviceSynchronize();
-            if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on ref. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+                cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
+                ret = cudaDeviceSynchronize();
+                if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on ref. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
 
 
-            // Download kmers
-            ret = cudaMemcpy(dict_y_keys, ptr_keys_buf, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
-            if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (3). Error: %d\n", ret); exit(-1); }
-            ret = cudaMemcpy(dict_y_values, ptr_values_buf, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
-            if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (4). Error: %d\n", ret); exit(-1); }
+                // Download kmers
+                ret = cudaMemcpy(dict_y_keys, ptr_keys_buf, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+                if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (3). Error: %d\n", ret); exit(-1); }
+                ret = cudaMemcpy(dict_y_values, ptr_values_buf, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+                if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (4). Error: %d\n", ret); exit(-1); }
 
-            ret = cudaFree(d_temp_storage);
-            if(ret != cudaSuccess){ fprintf(stderr, "Bad free of temp storage (2): %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+                ret = cudaFree(d_temp_storage);
+                if(ret != cudaSuccess){ fprintf(stderr, "Bad free of temp storage (2): %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+
+                memcpy(&refcomp_sorted_words[pos_in_ref], dict_y_keys, items_read_y * sizeof(uint64_t));
+                memcpy(&refcomp_sorted_pos[pos_in_ref], dict_y_values, items_read_y * sizeof(uint32_t));
+
+                end = clock();
+#ifdef SHOWTIME
+                fprintf(stdout, "[INFO] sort words RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+#endif
+
+            }else{
+
+                // Simply copy the corresponding split to dict_y_keys and dict_y_values
+                memcpy(dict_y_keys, &refcomp_sorted_words[pos_in_ref], items_read_y * sizeof(uint64_t));
+                memcpy(dict_y_values, &refcomp_sorted_pos[pos_in_ref], items_read_y * sizeof(uint32_t));
+
+            }
 
             pos_in_ref += words_at_once;
 
-            end = clock();
-#ifdef SHOWTIME
-            fprintf(stdout, "[INFO] sort words RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
-#endif
 
             ////////////////////////////////////////////////////////////////////////////////
             // Generate hits for the current split BUT REVERSED !
@@ -1428,9 +1463,12 @@ int main(int argc, char ** argv)
 
     fclose(out);
     
+
+    free(ref_sorted_words);
+    free(ref_sorted_pos);
     
-    
-    
+    free(refcomp_sorted_words);
+    free(refcomp_sorted_pos);
     
 
     fprintf(stdout, "[INFO] Completed\n");
