@@ -153,28 +153,30 @@ int main(int argc, char ** argv)
 
 
     // Allocate memory on the host to store all splits of words for the reference and reversed reference
+
+    // Allocate as pinned 
+    char * sorted_words_storage;
+    uint64_t bytes_for_word_reusing = ref_len * 2 * (sizeof(uint64_t) + sizeof(uint32_t));
+    ret = cudaHostAlloc(&sorted_words_storage, bytes_for_word_reusing, cudaHostAllocMapped);
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for storage words. Error: %d\n", ret); exit(-1); }
+
+
+    uint64_t * ref_sorted_words = (uint64_t *) (&sorted_words_storage[0]);
+    uint32_t * ref_sorted_pos   = (uint32_t *) (&sorted_words_storage[ref_len * sizeof(uint64_t)]);
+    uint64_t * refcomp_sorted_words = (uint64_t *) (&sorted_words_storage[ref_len * (sizeof(uint64_t)+sizeof(uint32_t))]);
+    uint32_t * refcomp_sorted_pos   = (uint32_t *) (&sorted_words_storage[ref_len * (2*sizeof(uint64_t)+sizeof(uint32_t))]);
+
+    /*
     uint32_t total_ref_splits    = ref_len / words_at_once;
     uint64_t * ref_sorted_words = (uint64_t *) malloc(ref_len * sizeof(uint64_t));
     uint32_t * ref_sorted_pos   = (uint32_t *) malloc(ref_len * sizeof(uint32_t));
     if(ref_sorted_words == NULL || ref_sorted_pos == NULL) { fprintf(stderr, "Bad alloc of reusable buffer (1)\n"); exit(-1); }
+    /*
 
     /*
-    for(i=0; i<total_ref_splits; i++){
-        ref_sorted_words[i] = (uint64_t *) malloc(words_at_once * sizeof(uint64_t));
-        ref_sorted_pos[i]   = (uint32_t *) malloc(words_at_once * sizeof(uint32_t));
-        if(ref_sorted_words[i] == NULL || ref_sorted_pos[i] == NULL) { fprintf(stderr, "Bad alloc of reusable buffer (2)\n"); exit(-1); }
-    }
-    */
-
     uint64_t * refcomp_sorted_words = (uint64_t *) malloc(ref_len * sizeof(uint64_t));
     uint32_t * refcomp_sorted_pos   = (uint32_t *) malloc(ref_len * sizeof(uint32_t));
     if(refcomp_sorted_words == NULL || refcomp_sorted_pos == NULL) { fprintf(stderr, "Bad alloc of reusable buffer (3)\n"); exit(-1); }
-    /*
-    for(i=0; i<total_ref_splits; i++){
-        refcomp_sorted_words[i] = (uint64_t *) malloc(words_at_once * sizeof(uint64_t));
-        refcomp_sorted_pos[i]   = (uint32_t *) malloc(words_at_once * sizeof(uint32_t));
-        if(refcomp_sorted_words[i] == NULL || refcomp_sorted_pos[i] == NULL) { fprintf(stderr, "Bad alloc of reusable buffer (4)\n"); exit(-1); }
-    }
     */
 
     
@@ -1464,12 +1466,13 @@ int main(int argc, char ** argv)
     fclose(out);
     
 
+    /*
     free(ref_sorted_words);
     free(ref_sorted_pos);
     
     free(refcomp_sorted_words);
     free(refcomp_sorted_pos);
-    
+    */
 
     fprintf(stdout, "[INFO] Completed\n");
 
@@ -1496,23 +1499,7 @@ int main(int argc, char ** argv)
 
     cudaFree(data_mem);
     cudaFreeHost(host_pinned_mem);
-    /*
-    cudaFreeHost(query_seq_host);
-    cudaFreeHost(ref_seq_host);
-    cudaFreeHost(ref_rev_seq_host);
-    cudaFreeHost(dict_x_keys); 
-    cudaFreeHost(dict_x_values); 
-    cudaFreeHost(dict_y_keys); 
-    cudaFreeHost(dict_y_values); 
-    cudaFreeHost(hits); 
-    cudaFreeHost(filtered_hits_x); 
-    cudaFreeHost(filtered_hits_y); 
-    cudaFreeHost(host_left_offset); 
-    cudaFreeHost(host_right_offset); 
-    cudaFreeHost(diagonals); 
-    cudaFreeHost(ascending_numbers); 
-    cudaFreeHost(indexing_numbers); 
-    */
+    cudaFreeHost(sorted_words_storage);
 
     return 0;
 }
