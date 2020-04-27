@@ -12,9 +12,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 
-//uint64_t filter_hits(hit_advanced * hits_in, ulong kmer_size, ulong n_hits_found);
 void print_header(FILE * out, uint32_t query_len, uint32_t ref_len);
-
+uint64_t memory_allocation_chooser(uint64_t total_memory);
 
 int main(int argc, char ** argv)
 {
@@ -70,7 +69,7 @@ int main(int argc, char ** argv)
 
 
     // Calculate how much ram we can use for every chunk
-    uint64_t effective_global_ram =  (global_device_RAM - 100*1024*1024); //Minus 100 MBs for other stuff
+    uint64_t effective_global_ram =  (global_device_RAM - memory_allocation_chooser(global_device_RAM)); //Minus 100 to 300 MBs for other stuff
 
     // We will do the one-time alloc here
     // i.e. allocate a pool once and used it manually
@@ -95,8 +94,6 @@ int main(int argc, char ** argv)
 
 
 
-    uint64_t * keys, * keys_buf; 
-    uint32_t * values, * values_buf;
     fprintf(stdout, "[INFO] You can have %"PRIu64" MB for words (i.e. %"PRIu64" words), and %"PRIu64" MB for hits (i.e. %"PRIu64" hits)\n", 
         bytes_for_words / (1024*1024), words_at_once, (effective_global_ram - bytes_for_words) / (1024*1024), max_hits);
 
@@ -222,7 +219,6 @@ int main(int argc, char ** argv)
     for(i=0; i<n_streams; i++) cudaStreamCreate(&streams[i]);
 
     // Pointer to device memory allocating the query sequence, reference and reversed reference
-    char * seq_dev_mem = NULL, * seq_dev_mem_aux = NULL;
 
     fprintf(stdout, "[INFO] Loading query\n");
     //load_seq(query, query_seq_host);
@@ -1499,5 +1495,20 @@ void print_header(FILE * out, uint32_t query_len, uint32_t ref_len){
     fprintf(out, "========================================================\n");
     fprintf(out, "Type,xStart,yStart,xEnd,yEnd,strand(f/r),block,length,score,ident,similarity,%%ident,SeqX,SeqY\n");
 }
+
+
+uint64_t memory_allocation_chooser(uint64_t total_memory)
+{
+   
+
+    if(total_memory <= 4340179200) return 100*1024*1024;
+    else if(total_memory <= 6442450944) return 150*1024*1024;
+    else if(total_memory <= 8689934592) return 200*1024*1024;
+    return 300*1024*1024;
+ 
+}
+
+
+
 
 

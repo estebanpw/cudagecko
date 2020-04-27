@@ -325,7 +325,6 @@ uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * 
     //int64_t last_position_y = -1;
 
 
-    uint64_t prev_hash = 0xFFFFFFFFFFFFFFFF, returning_y_pos = 0; // it would be very wierd if the sequence only had TT's
 
     
     while(id_x < items_x || id_y < items_y) {
