@@ -4,6 +4,8 @@
 #include "cpu_functions.c"
 #include "cub/cub.cuh"
 
+#include <cuda_profiler_api.h>
+
 //#define DIMENSION 1000
 
 
@@ -539,7 +541,10 @@ int main(int argc, char ** argv)
 
         if(number_of_blocks != 0)
         {
+            cudaProfilerStart();
             kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_query);
+            //kernel_index_global32_advanced<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, (uchar4 *) ptr_seq_dev_mem, pos_in_query);
+            cudaProfilerStop();
         
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on query. Error: %d\n", ret); exit(-1); }

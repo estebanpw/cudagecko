@@ -389,9 +389,10 @@ __global__ void kernel_register_fast_hash_rotational(uint64_t * hashes, uint64_t
 
 		// Remember - the kmer is not well built right now but first focus on performance
 
+
+
 		
 		hash = hash << 2;
-
 		
 		if((char) byte == 'C') hash = hash + 1;
 		if((char) byte == 'G') hash = hash + 2;
@@ -416,59 +417,81 @@ __global__ void kernel_register_fast_hash_rotational(uint64_t * hashes, uint64_t
 }
 
 __global__ void kernel_index_global32(uint64_t * hashes, uint32_t * positions, const char * sequence, uint32_t offset) {
-		
 
-	uint64_t k, hash = 0;
-		
-	uint64_t bad = 0xFFFFFFFFFFFFFFFF;
+    uint64_t hash = 0, k = 0;
+    uint64_t bad = 0xFFFFFFFFFFFFFFFF;
+    for(k=0; k<32; k++){
+        char c = sequence[threadIdx.x + k + blockIdx.x * blockDim.x];
+        // IF-binary
+        /*
+        hash = hash << 2;
+        if(c == 'A') hash += 0;
+        if(c == 'C') hash += 1;
+        if(c == 'G') hash += 2;
+        if(c == 'T') hash += 3;
+        if(c == 'N') bad = 0;
+        */
+        // IF-cached
+        if(c == 'C') hash += pow4[k];
+        if(c == 'G') hash += pow4_G[k];
+        if(c == 'T') hash += pow4_T[k];
+        if(c == 'N') bad = 0;
+        /*
+        // Pure arithmetic
+        hash = hash << 2;
+        hash += (c & 6) >> 1;
+        if(c == 'N') bad = 0;
+        */
 
-	for(k=0; k<32; k++){
-
-		char c = sequence[threadIdx.x + k + blockIdx.x * blockDim.x];
-		//if(threadIdx.x == 0) printf("%c", c);
-		//char c = sequence[0];
-
-		hash = hash << 2;
-
-		if(c == 'A') hash += 0;
-		if(c == 'C') hash += 1;
-		if(c == 'G') hash += 2;
-		if(c == 'T') hash += 3;
-		if(c == 'N') bad = 0;
-
-		
-	}
-
-	// [0 - 32] * [0-N]* [32]
-	hashes[threadIdx.x + blockIdx.x * blockDim.x] = hash & bad;
-	//hashes[0] = hash & bad;
-	positions[threadIdx.x + blockIdx.x * blockDim.x] = (threadIdx.x + blockIdx.x * blockDim.x + offset) | (~bad);
+    }
+    // [0 - 32] * [0-N]* [32]
+    hashes[threadIdx.x + blockIdx.x * blockDim.x] = hash & bad;
+    positions[threadIdx.x + blockIdx.x * blockDim.x] = (threadIdx.x + blockIdx.x * blockDim.x + offset) | (~bad);
 }
 
-__global__ void kernel_index_global_shared(uint64_t * hashes, uint32_t * positions, const char * sequence, uint32_t offset) {
+__global__ void kernel_index_global32_advanced(uint64_t * hashes, uint32_t * positions, const uchar4 * sequence, uint32_t offset) {
 		
 
-	uint64_t k, hash = 0;
+	uint64_t hash = 0;
+    int k;
+
+    int access = (threadIdx.x >> 2) + (blockIdx.x >> 2) * (blockDim.x >> 2);
 		
 	uint64_t bad = 0xFFFFFFFFFFFFFFFF;
 
-	for(k=0; k<blockDim.x; k++){
+	for(k=0; k<8; k++){
 
-		char c = sequence[threadIdx.x + k + blockIdx.x * blockDim.x];
-		//if(threadIdx.x == 0) printf("%c", c);
-		//char c = sequence[0];
+		//char c = sequence[threadIdx.x + k + blockIdx.x * blockDim.x];
+        int superk = k << 2;
+        uchar4 c = sequence[access + k];
 
-		if(c == 'A') hash += 0;
-		if(c == 'C') hash += pow4[k];
-		if(c == 'G') hash += pow4_G[k];
-		if(c == 'T') hash += pow4_T[k];
-		if(c == 'N') bad = 0;
-		
+        //if(blockIdx.x == 0 && threadIdx.x == 1) printf("%c %c %c %c\n", c.x, c.y, c.z, c.w);
+
+        if(c.x == 'A') hash += 0;
+        if(c.x == 'C') hash += pow4[superk];
+        if(c.x == 'G') hash += pow4_G[superk];
+        if(c.x == 'T') hash += pow4_T[superk];
+        if(c.x == 'N') bad = 0;
+        if(c.y == 'A') hash += 0;
+        if(c.y == 'C') hash += pow4[superk + 1];
+        if(c.y == 'G') hash += pow4_G[superk + 1];
+        if(c.y == 'T') hash += pow4_T[superk + 1];
+        if(c.y == 'N') bad = 0;
+        if(c.z == 'A') hash += 0;
+        if(c.z == 'C') hash += pow4[superk + 2];
+        if(c.z == 'G') hash += pow4_G[superk + 2];
+        if(c.z == 'T') hash += pow4_T[superk + 2];
+        if(c.z == 'N') bad = 0;
+        if(c.w == 'A') hash += 0;
+        if(c.w == 'C') hash += pow4[superk + 3];
+        if(c.w == 'G') hash += pow4_G[superk + 3];
+        if(c.w == 'T') hash += pow4_T[superk + 3];
+        if(c.w == 'N') bad = 0;
+
 	}
 
 	// [0 - 32] * [0-N]* [32]
 	hashes[threadIdx.x + blockIdx.x * blockDim.x] = hash & bad;
-	//hashes[0] = hash & bad;
 	positions[threadIdx.x + blockIdx.x * blockDim.x] = (threadIdx.x + blockIdx.x * blockDim.x + offset) | (~bad);
 }
 
