@@ -497,21 +497,32 @@ __global__ void kernel_index_global32_advanced(uint64_t * hashes, uint32_t * pos
 
 __global__ void kernel_reverse_complement(const char * sequence, char * reverse_sequence, uint32_t seq_len) {
 	
-	//uint64_t id = (31 - threadIdx.x) + blockIdx.x * blockDim.x;
-	uint64_t id = threadIdx.x + blockIdx.x * blockDim.x;
+	uint32_t id = threadIdx.x + blockIdx.x * blockDim.x;
 	
 
 	if(id < seq_len){
+    // This if is not bad since only the last block will not work it in lockstep
 
 		//uint64_t lookup = seq_len - id;
 		uint32_t lookup = (seq_len - 1) - id;
+        //uintptr_t readptr = (uintptr_t) &sequence[id];
+        //uintptr_t writeptr = (uintptr_t) &reverse_sequence[lookup];
 		char original = sequence[id];
+
+        
 		char complement = 'N';
 		if(original == 'A') complement = 'T';
 		if(original == 'C') complement = 'G';
 		if(original == 'G') complement = 'C';
 		if(original == 'T') complement = 'A';
-
+        
+        // LAST NVPROF Try
+        /*
+        if(((uintptr_t)reverse_sequence+lookup) % 4 == 0){ 
+            reverse_sequence[lookup] = complement;
+        }
+        */
+        
 		reverse_sequence[lookup] = complement;
 	}
 }
