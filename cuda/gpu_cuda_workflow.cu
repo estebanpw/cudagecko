@@ -339,11 +339,11 @@ int main(int argc, char ** argv)
     //cudaFree(seq_dev_mem_aux);
     //cudaFree(seq_dev_mem_reverse_aux);
 
-    for(i=0; i<ref_len; i++){
-        if(isupper(ref_rev_seq_host[i]) != ref_rev_seq_host[i]) {
-            printf("Found first at %u and it is %.32s\n", i, &ref_rev_seq_host[i]); break;
-        }
-    }
+    //for(i=0; i<ref_len; i++){
+    //    if(isupper(ref_rev_seq_host[i]) != ref_rev_seq_host[i]) {
+    //        printf("Found first at %u and it is %.32s\n", i, &ref_rev_seq_host[i]); break;
+    //    }
+    //}
 
 
     // Print some info
@@ -357,7 +357,6 @@ int main(int argc, char ** argv)
     fprintf(stdout, "\t(End   ref)%.64s\n", &ref_seq_host[ref_len-64]);
     fprintf(stdout, "\t(End   rev)%.64s\n", &ref_rev_seq_host[ref_len-64]);
 
-    exit(0);   
      
     //fprintf(stdout, "\t(Full que)%.*s\n", query_len, query_seq_host);
     //fprintf(stdout, "\t(Full ref)%.*s\n", ref_len, ref_seq_host);
