@@ -505,8 +505,6 @@ __global__ void kernel_reverse_complement(const char * sequence, char * reverse_
 
 		//uint64_t lookup = seq_len - id;
 		uint32_t lookup = (seq_len - 1) - id;
-        //uintptr_t readptr = (uintptr_t) &sequence[id];
-        //uintptr_t writeptr = (uintptr_t) &reverse_sequence[lookup];
 		char original = sequence[id];
 
         
@@ -516,12 +514,6 @@ __global__ void kernel_reverse_complement(const char * sequence, char * reverse_
 		if(original == 'G') complement = 'C';
 		if(original == 'T') complement = 'A';
         
-        // LAST NVPROF Try
-        /*
-        if(((uintptr_t)reverse_sequence+lookup) % 4 == 0){ 
-            reverse_sequence[lookup] = complement;
-        }
-        */
         
 		reverse_sequence[lookup] = complement;
 	}

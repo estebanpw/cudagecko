@@ -243,10 +243,30 @@ int main(int argc, char ** argv)
 
     // ## POINTER SECTION 0
     uint64_t address_checker = 0;
+    
     char * ptr_seq_dev_mem_aux = &data_mem[0];
-    address_checker = realign_address(address_checker + ref_len, 4);
+    address_checker = realign_address(address_checker + ref_len, 128);
     char * ptr_seq_dev_mem_reverse_aux = &data_mem[address_checker];
     address_checker = realign_address(address_checker + ref_len, 4);
+
+    char * ptr_reverse_write[n_streams];
+
+    uint32_t chunk_size = ref_len/n_streams + 4; // Always force one divisor more cause of decimal loss
+    if(chunk_size % 128 != 0){ chunk_size += 128 - (chunk_size % 128); printf("ENTER\n"); } // Since sequence starts at 0, making the chunks multiple of 128 guarantees 100% GL efficiency
+
+
+    ptr_reverse_write[0] = ptr_seq_dev_mem_reverse_aux;
+    for(i=1; i<n_streams-1; i++){
+        ptr_reverse_write[i] = ptr_reverse_write[i-1] + chunk_size;
+    }
+    ptr_reverse_write[n_streams-1] = ptr_reverse_write[n_streams-2] + chunk_size;
+    uintptr_t where_ends = (uintptr_t) (ptr_reverse_write[n_streams-1] + MIN(chunk_size, ref_len - chunk_size*(n_streams-1)));
+    if(where_ends % 128 != 0) ptr_reverse_write[n_streams-1] += 128 - (where_ends % 128);
+
+    //printf("Starts %p Endings %p\n", ptr_reverse_write[0], ptr_reverse_write[0]+chunk_size);
+    //printf("Starts %p Endings %p\n", ptr_reverse_write[1], ptr_reverse_write[1]+chunk_size);
+    //printf("Starts %p Endings %p\n", ptr_reverse_write[2], ptr_reverse_write[2]+chunk_size);
+    //printf("Starts %p Endings %p\n", ptr_reverse_write[3], ptr_reverse_write[3]+MIN(chunk_size, ref_len - chunk_size*(n_streams-1)));
    
  
     threads_number = 128;
@@ -254,84 +274,78 @@ int main(int argc, char ** argv)
     if(ref_len > 1024){
     
 
-        uint32_t chunk_size = ref_len/n_streams + 4; // Always force one divisor more cause of decimal loss
-        if(chunk_size % 4 != 0){ chunk_size += 4 - (chunk_size % 4); printf("ENTER\n"); } // Since sequence starts at 0, making the chunks multiple of 4 guarantees 100% GL efficiency
         number_of_blocks = chunk_size/threads_number + threads_number; // Same
         if(number_of_blocks % threads_number != 0){ number_of_blocks += 1; printf("ENTER 2\n");}
-        uint32_t offset, inverse_offset;
-        uintptr_t integer_ptr = (uintptr_t) ptr_seq_dev_mem_reverse_aux;
-        uint64_t ptr_end = ((uint64_t) integer_ptr) + ref_len;
-        printf("Should be starting at %lu and finishing at %lu\n", (uint64_t) integer_ptr, ptr_end);
-        if(ptr_end % 4 != 0){ // OK this -1 is dodgy. It is because the lookup in the rev comp kernel is (seqlen - 1) - threadIdx
-            printf("Fixed!!: Start pos: %p end pos %p\n", ptr_seq_dev_mem_reverse_aux + (4 -  (ptr_end % 4)), ptr_seq_dev_mem_reverse_aux + (4 -  (ptr_end % 4)) + ref_len);
-            printf("Fix amount: %lu\n", (4 -  (ptr_end % 4)));
-            ptr_seq_dev_mem_reverse_aux = ptr_seq_dev_mem_reverse_aux + (4 -  (ptr_end % 4));
-        }
-
-        ptr_seq_dev_mem_reverse_aux += 1; // OK this +1 is dodgy. It is because the lookup in the rev comp kernel is (seqlen - 1) - threadIdx
+        uint32_t offset; //, inverse_offset;
 
         
         for(i=0; i<n_streams; i++)
         {
             offset = chunk_size * i;
-            inverse_offset = (chunk_size * (i+1) < ref_len) ? ref_len - chunk_size * (i+1) : 0;
+            //inverse_offset = (chunk_size * (i+1) < ref_len) ? ref_len - chunk_size * (i+1) : 0;
 
-            
-            //printf("%p -> %lu\n", ptr_seq_dev_mem_reverse_aux, integer_ptr);
-
-            //additional_aligning_offset[i] = ((uint64_t)inverse_offset) + 4 -(((uint64_t)inverse_offset + (uint64_t)integer_ptr)% 4) + 32; 
-            //chunk_lens[i] = (uint64_t) MIN(chunk_size, ref_len - offset);
-            
-            //printf("Inverse offset value: %"PRIu32", additional added: %"PRIu64"\n", inverse_offset, additional_aligning_offset[i]); 
-            //printf("Pointer %p + %u + %lu + 32 = %p\n", ptr_seq_dev_mem_reverse_aux, (inverse_offset), 4-(((uint64_t) inverse_offset + (uint64_t)integer_ptr)% (uint64_t)4), ptr_seq_dev_mem_reverse_aux + additional_aligning_offset[i]);
-            
             ret = cudaMemcpyAsync(ptr_seq_dev_mem_aux + offset, ref_seq_host + offset, MIN(chunk_size, ref_len - offset), cudaMemcpyHostToDevice, streams[i]);
             if(ret != cudaSuccess){ fprintf(stderr, "Could not copy reference sequence to device for reversing. Error: %d\n", ret); exit(-1); }
 
-            //printf("this launch will write at %p\n", ptr_seq_dev_mem_reverse_aux + additional_aligning_offset[i]);
+            //printf("On the other hand, the load align %p\n", ptr_seq_dev_mem_aux + offset);
 
-            cudaProfilerStart();
-            kernel_reverse_complement<<<number_of_blocks, threads_number, 0, streams[i]>>>(ptr_seq_dev_mem_aux + offset, ptr_seq_dev_mem_reverse_aux + inverse_offset, MIN(chunk_size, ref_len - offset));
-            //kernel_reverse_complement<<<number_of_blocks, threads_number, 0, streams[i]>>>(ptr_seq_dev_mem_aux + offset, ptr_seq_dev_mem_reverse_aux + additional_aligning_offset[i], MIN(chunk_size, ref_len - offset));
-            cudaProfilerStop();
+            //cudaProfilerStart();
+            kernel_reverse_complement<<<number_of_blocks, threads_number, 0, streams[i]>>>(ptr_seq_dev_mem_aux + offset, ptr_reverse_write[i], MIN(chunk_size, ref_len - offset));
+            //cudaProfilerStop();
 
         }
 
+        ret = cudaDeviceSynchronize();
+        if(ret != cudaSuccess){ fprintf(stderr, "Could not compute reverse on reference. Error: %d\n", ret); exit(-1); }
+
+        // Perform copy from the nstreams
+        uint32_t t_copy_rev = 0;
+        for(i=0; i<n_streams; i++){
+
+            ret = cudaMemcpy(ref_rev_seq_host + t_copy_rev, ptr_reverse_write[n_streams - (i+1)], MIN(chunk_size, ref_len - chunk_size*(n_streams-1-i)), cudaMemcpyDeviceToHost);
+            if(ret != cudaSuccess){ fprintf(stderr, "Could not copy reference sequence to device for reversing. Error: %d\n", ret); exit(-1); }
+            t_copy_rev += MIN(chunk_size, ref_len - chunk_size*(n_streams-1-i));
+        }
+
+
+
     }else{
 
+
         number_of_blocks = (ref_len)/threads_number + 1;
+
+
+        uintptr_t integer_ptr = (uintptr_t) ptr_seq_dev_mem_reverse_aux;
+        uint64_t ptr_end = ((uint64_t) integer_ptr) + ref_len;
+    
+        if(ptr_end % 128 != 0) ptr_seq_dev_mem_reverse_aux += 128 - (ptr_end % 128);
+
+
+
 
         ret = cudaMemcpy(ptr_seq_dev_mem_aux, ref_seq_host, ref_len, cudaMemcpyHostToDevice);
         if(ret != cudaSuccess){ fprintf(stderr, "Could not copy reference sequence to device for reversing. Error: %d\n", ret); exit(-1); }
 
+        //cudaProfilerStart();
         kernel_reverse_complement<<<number_of_blocks, threads_number>>>(ptr_seq_dev_mem_aux, ptr_seq_dev_mem_reverse_aux, ref_len);
+        //cudaProfilerStop();
         
+        ret = cudaDeviceSynchronize();
+        if(ret != cudaSuccess){ fprintf(stderr, "Could not compute reverse on reference. Error: %d\n", ret); exit(-1); }
 
+        ret = cudaMemcpy(ref_rev_seq_host, ptr_seq_dev_mem_reverse_aux, ref_len, cudaMemcpyDeviceToHost);
+        if(ret != cudaSuccess){ fprintf(stderr, "Could not copy reference sequence to device for reversing. Error: %d\n", ret); exit(-1); }
     }
     
     threads_number = 32;
 
-    ret = cudaDeviceSynchronize();
-    if(ret != cudaSuccess){ fprintf(stderr, "Could not compute reverse on reference. Error: %d\n", ret); exit(-1); }
 
 
     /*
 
-    uint32_t t_copy_rev = 0;
-    for(i=0; i<n_streams; i++){
-
-
-        //printf("Copying from %lu to %lu (%lu bytes)\n", additional_aligning_offset[n_streams - (i+1)], additional_aligning_offset[n_streams - (i+1)] + chunk_lens[n_streams - (i+1)], chunk_lens[n_streams - (i+1)]);
-        ret = cudaMemcpy(ref_rev_seq_host + t_copy_rev, ptr_seq_dev_mem_reverse_aux + additional_aligning_offset[n_streams - (i+1)], chunk_lens[n_streams - (i+1)], cudaMemcpyDeviceToHost);
-        if(ret != cudaSuccess){ fprintf(stderr, "Could not copy reference sequence to device for reversing. Error: %d\n", ret); exit(-1); }
-        t_copy_rev += chunk_lens[n_streams - (i+1)];
-
-
     }
     */
 
-    ret = cudaMemcpy(ref_rev_seq_host, ptr_seq_dev_mem_reverse_aux, ref_len, cudaMemcpyDeviceToHost);
-    if(ret != cudaSuccess){ fprintf(stderr, "Could not copy reference sequence to device for reversing. Error: %d\n", ret); exit(-1); }
 
     ret = cudaDeviceSynchronize();
     end = clock();
@@ -388,14 +402,6 @@ int main(int argc, char ** argv)
 
     dict_y_values = (uint32_t *) (base_ptr_pinned + pinned_address_checker);
     pinned_address_checker = realign_address(pinned_address_checker + words_at_once * sizeof(uint32_t), 4);
-
-    // CONTINUE HERE
-    // REMEMBER ===================
-    // YOU THINK SOME POINTER ALLOCATION IN THE GPU IS WRONG BECAUSE 
-    // YOU ARE NOT ADDING UP THE SHIFTS IN REALIGNMENTS
-    // This was fixed
-
-
     // These depends on the number of words
     /*
     //dict_x_keys = (uint64_t *) malloc(words_at_once*sizeof(uint64_t));
