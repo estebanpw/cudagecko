@@ -2,6 +2,12 @@
 
 CUDAGECKO is a GPU implementation for the large-scale, seed-and-extend GECKO algorithm. 
 
+## Requirements
+
+CUDAGECKO requires a CUDA capable device that supports warp shuffle instructions.
+
+Known to work with CUDA 10.0 and maxwell devices with compute capabilitiy 5.2
+
 ## Installation
 
 Clone the repository and make install each folder, or run ./INSTALL in the repository folder
@@ -11,6 +17,7 @@ Clone the repository and make install each folder, or run ./INSTALL in the repos
 cudagecko/bin/gpu_cuda_workflow -query inputQueryFasta -ref inputReferenceFasta
 
 For a list of parameters, use --help
+
 Some useful parameters:
 
 1. -len <min len for an HSP to be reported, default: 32> NOTE: length runs in multiples of 32, so using 50 for instance will yield HSPs of 64 or more
