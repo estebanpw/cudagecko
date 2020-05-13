@@ -192,7 +192,7 @@ int main(int argc, char ** argv)
     ref_rev_seq_host = (char *) (base_ptr_pinned + pinned_address_checker);
     pinned_address_checker = realign_address(pinned_address_checker + ref_len, 4);
    
-    printf("Reverse starts at %p\n", ref_rev_seq_host); 
+    //printf("Reverse starts at %p\n", ref_rev_seq_host); 
 
 
     
@@ -252,7 +252,7 @@ int main(int argc, char ** argv)
     char * ptr_reverse_write[n_streams];
 
     uint32_t chunk_size = ref_len/n_streams + 4; // Always force one divisor more cause of decimal loss
-    if(chunk_size % 128 != 0){ chunk_size += 128 - (chunk_size % 128); printf("ENTER\n"); } // Since sequence starts at 0, making the chunks multiple of 128 guarantees 100% GL efficiency
+    if(chunk_size % 128 != 0){ chunk_size += 128 - (chunk_size % 128); } // Since sequence starts at 0, making the chunks multiple of 128 guarantees 100% GL efficiency
 
 
     ptr_reverse_write[0] = ptr_seq_dev_mem_reverse_aux;
@@ -275,7 +275,7 @@ int main(int argc, char ** argv)
     
 
         number_of_blocks = chunk_size/threads_number + threads_number; // Same
-        if(number_of_blocks % threads_number != 0){ number_of_blocks += 1; printf("ENTER 2\n");}
+        if(number_of_blocks % threads_number != 0){ number_of_blocks += 1; }
         uint32_t offset; //, inverse_offset;
 
         
@@ -1046,8 +1046,17 @@ int main(int argc, char ** argv)
 
             if(number_of_blocks != 0)
             {
+                //cudaProfilerStart();
                 kernel_frags_forward_register<<<number_of_blocks, threads_number>>>(ptr_device_filt_hits_x, ptr_device_filt_hits_y, ptr_left_offset, ptr_right_offset, ptr_seq_dev_mem, ptr_seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len));
+                
+                //threads_number = 128;
+                //number_of_blocks = (n_hits_kept / threads_number) + 1;
+                //cudaProfilerStart();
+                //kernel_frags_forward_per_thread<<<number_of_blocks, threads_number>>>(ptr_device_filt_hits_x, ptr_device_filt_hits_y, ptr_left_offset, ptr_right_offset, ptr_seq_dev_mem, ptr_seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len), n_hits_kept);
                 ret = cudaDeviceSynchronize();
+                //threads_number = 32;
+                //cudaProfilerStop();
+                
                 if(ret != cudaSuccess){ fprintf(stderr, "Failed on generating forward frags. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             }
 
