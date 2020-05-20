@@ -150,6 +150,10 @@ int main(int argc, char ** argv)
 
     fprintf(stdout, "[INFO] Qlen: %"PRIu32"; Rlen: %"PRIu32"\n", query_len, ref_len);
 
+    FILE * jiji = fopen("jiji", "wt");
+    fprintf(jiji, "%.*s", query_len, pro_q_buffer);
+    fclose(jiji);
+
     // Check that sequence length complies
     if(MAX(query_len, ref_len) >= 2147483648){
         fprintf(stdout, "[WARNING] !!!!!!!!!!!!!!!!!!!!!!\n");
@@ -319,9 +323,6 @@ int main(int argc, char ** argv)
         uint64_t ptr_end = ((uint64_t) integer_ptr) + ref_len;
     
         if(ptr_end % 128 != 0) ptr_seq_dev_mem_reverse_aux += 128 - (ptr_end % 128);
-
-
-
 
         ret = cudaMemcpy(ptr_seq_dev_mem_aux, ref_seq_host, ref_len, cudaMemcpyHostToDevice);
         if(ret != cudaSuccess){ fprintf(stderr, "Could not copy reference sequence to device for reversing. Error: %d\n", ret); exit(-1); }
