@@ -478,7 +478,7 @@ void read_kmers(uint64_t query_l, char * seq_x, uint64_t * keys_x, uint64_t * va
     }
 }
 
-void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, FILE ** ref, FILE ** out, uint32_t * min_length, int * fast, uint32_t * max_frequency, float * factor){
+void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, FILE ** ref, FILE ** out, uint32_t * min_length, int * fast, uint32_t * max_frequency, float * factor, uint32_t * n_frags_per_block){
     
     int pNum = 0;
     char * p1 = NULL, * p2 = NULL;
@@ -492,6 +492,7 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
             fprintf(stdout, "           -max_freq   [only works in --sensitive] Maximum frequency per hit (default: unlimited)\n");
             fprintf(stdout, "                       (fast mode can skip highly repeated seeds)\n");
             fprintf(stdout, "           -factor     Fraction of GPU Ram dedicated to words (default: 0.125)\n");
+			fprintf(stdout, "           -seeds_pb	Number of seeds per block in the extenstion stage (default 20) \n");
             fprintf(stdout, "                       (The bigger the fraction, the faster it will run - however highly similar sequences\n");
             fprintf(stdout, "                       such as human and gorilla chromosomes require a smaller fractions because of the\n");
             fprintf(stdout, "                       huge number of hits that are generated)\n");
@@ -518,10 +519,16 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
             if(atoi(av[pNum+1]) < 0) { fprintf(stderr, "Device must be >0\n"); exit(-1); }
         }
 
-        if(strcmp(av[pNum], "-len") == 0){
+        if(strcmp(av[pNum], "-seeds_pb") == 0){
+            *n_frags_per_block = (uint32_t) atoi(av[pNum+1]);
+            if(atoi(av[pNum+1]) < 1) { fprintf(stderr, "Seeds per block must be >0\n"); exit(-1); }
+        }
+
+		if(strcmp(av[pNum], "-len") == 0){
             *min_length = (uint32_t) atoi(av[pNum+1]);
             if(atoi(av[pNum+1]) < 1) { fprintf(stderr, "Length must be >0\n"); exit(-1); }
         }
+
 
         if(strcmp(av[pNum], "-factor") == 0){
             *factor = atof(av[pNum+1]);

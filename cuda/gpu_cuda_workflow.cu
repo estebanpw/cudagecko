@@ -19,12 +19,12 @@ uint64_t memory_allocation_chooser(uint64_t total_memory);
 
 int main(int argc, char ** argv)
 {
-    uint32_t i, min_length = 64, max_frequency = 0;
+    uint32_t i, min_length = 64, max_frequency = 0, n_frags_per_block = 20;
     float factor = 0.125;
     int fast = 0; // sensitive is default
     unsigned selected_device = 0;
     FILE * query = NULL, * ref = NULL, * out = NULL;
-    init_args(argc, argv, &query, &selected_device, &ref, &out, &min_length, &fast, &max_frequency, &factor);
+    init_args(argc, argv, &query, &selected_device, &ref, &out, &min_length, &fast, &max_frequency, &factor, &n_frags_per_block);
 
     clock_t start = clock();
     /*Do something*/
@@ -671,7 +671,7 @@ int main(int argc, char ** argv)
         //read_kmers(query_len, query_seq_host, dict_x_keys, dict_x_values);
         //ret = cudaMemcpy(keys, dict_x_keys, items_read_x*sizeof(uint64_t), cudaMemcpyHostToDevice);
         //ret = cudaMemcpy(values, dict_x_values, items_read_x*sizeof(uint64_t), cudaMemcpyHostToDevice);
-        
+    
         cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys, d_values, items_read_x);
         ret = cudaDeviceSynchronize();
         if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on query. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
@@ -1041,13 +1041,14 @@ int main(int argc, char ** argv)
             //    printf(" \t\t y: %.32s %"PRIu64"\n", &ref_seq_host[filtered_hits_y[i]], filtered_hits_y[i]);
             //}
 
-            number_of_blocks = n_hits_kept; 
+            //number_of_blocks = n_hits_kept; 
+			number_of_blocks = (n_hits_kept / n_frags_per_block) + 1;
             //number_of_blocks = 20; // REMOVE !!
 
             if(number_of_blocks != 0)
             {
                 //cudaProfilerStart();
-                kernel_frags_forward_register<<<number_of_blocks, threads_number>>>(ptr_device_filt_hits_x, ptr_device_filt_hits_y, ptr_left_offset, ptr_right_offset, ptr_seq_dev_mem, ptr_seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len));
+                kernel_frags_forward_register<<<number_of_blocks, threads_number>>>(ptr_device_filt_hits_x, ptr_device_filt_hits_y, ptr_left_offset, ptr_right_offset, ptr_seq_dev_mem, ptr_seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len), n_hits_kept, n_frags_per_block);
                 
                 //threads_number = 128;
                 //number_of_blocks = (n_hits_kept / threads_number) + 1;
@@ -1422,7 +1423,9 @@ int main(int argc, char ** argv)
             //continue;
 
 
-            number_of_blocks = n_hits_kept; 
+            //number_of_blocks = n_hits_kept; 
+			number_of_blocks = (n_hits_kept / n_frags_per_block) + 1;
+
             //number_of_blocks = 100; 
             //printf("sending blocks: %u\n", number_of_blocks);
             //printf("We are sending: posinquery-wo=%u posinref-wo=%u MIN1=%u MIN2=%u\n", pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len));
@@ -1431,7 +1434,7 @@ int main(int argc, char ** argv)
 
             if(number_of_blocks != 0)
             {
-                kernel_frags_reverse_register<<<number_of_blocks, threads_number>>>(ptr_device_filt_hits_x, ptr_device_filt_hits_y, ptr_left_offset, ptr_right_offset, ptr_seq_dev_mem, ptr_seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len));
+                kernel_frags_reverse_register<<<number_of_blocks, threads_number>>>(ptr_device_filt_hits_x, ptr_device_filt_hits_y, ptr_left_offset, ptr_right_offset, ptr_seq_dev_mem, ptr_seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len), n_hits_kept, n_frags_per_block);
 
                 ret = cudaDeviceSynchronize();
                 if(ret != cudaSuccess){ fprintf(stderr, "Failed on generating forward frags. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
