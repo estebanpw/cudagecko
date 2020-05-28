@@ -1047,7 +1047,7 @@ int main(int argc, char ** argv)
 
             if(number_of_blocks != 0)
             {
-                //cudaProfilerStart();
+                cudaProfilerStart();
                 kernel_frags_forward_register<<<number_of_blocks, threads_number>>>(ptr_device_filt_hits_x, ptr_device_filt_hits_y, ptr_left_offset, ptr_right_offset, ptr_seq_dev_mem, ptr_seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len), n_hits_kept, n_frags_per_block);
                 
                 //threads_number = 128;
@@ -1055,8 +1055,7 @@ int main(int argc, char ** argv)
                 //cudaProfilerStart();
                 //kernel_frags_forward_per_thread<<<number_of_blocks, threads_number>>>(ptr_device_filt_hits_x, ptr_device_filt_hits_y, ptr_left_offset, ptr_right_offset, ptr_seq_dev_mem, ptr_seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len), n_hits_kept);
                 ret = cudaDeviceSynchronize();
-                //threads_number = 32;
-                //cudaProfilerStop();
+                cudaProfilerStop();
                 
                 if(ret != cudaSuccess){ fprintf(stderr, "Failed on generating forward frags. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             }
