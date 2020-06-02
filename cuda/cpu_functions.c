@@ -492,7 +492,6 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
             fprintf(stdout, "           -max_freq   [only works in --sensitive] Maximum frequency per hit (default: unlimited)\n");
             fprintf(stdout, "                       (fast mode can skip highly repeated seeds)\n");
             fprintf(stdout, "           -factor     Fraction of GPU Ram dedicated to words (default: 0.125)\n");
-			fprintf(stdout, "           -seeds_pb	Number of seeds per block in the extenstion stage (default 20) \n");
             fprintf(stdout, "                       (The bigger the fraction, the faster it will run - however highly similar sequences\n");
             fprintf(stdout, "                       such as human and gorilla chromosomes require a smaller fractions because of the\n");
             fprintf(stdout, "                       huge number of hits that are generated)\n");

@@ -19,7 +19,7 @@ uint64_t memory_allocation_chooser(uint64_t total_memory);
 
 int main(int argc, char ** argv)
 {
-    uint32_t i, min_length = 64, max_frequency = 0, n_frags_per_block = 20;
+    uint32_t i, min_length = 64, max_frequency = 0, n_frags_per_block = 32;
     float factor = 0.125;
     int fast = 0; // sensitive is default
     unsigned selected_device = 0;
@@ -1008,22 +1008,23 @@ int main(int argc, char ** argv)
             address_checker = 0;
             base_ptr = &data_mem[0];
             ptr_seq_dev_mem = (char *) (base_ptr);
-            address_checker += words_at_once;
+            address_checker = realign_address(address_checker + words_at_once, 32);
 
             ptr_seq_dev_mem_aux = (char *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + words_at_once, 4);
+            address_checker = realign_address(address_checker + words_at_once, 32);
+
 
             uint32_t * ptr_device_filt_hits_x = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 32);
 
             uint32_t * ptr_device_filt_hits_y = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 32);
 
             uint32_t * ptr_left_offset = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 32);
 
             uint32_t * ptr_right_offset = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 32);
 
 
 

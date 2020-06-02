@@ -48,7 +48,7 @@ __device__ void left_extend(int32_t warp_pos_x_left, int32_t warp_pos_y_left, ui
 		char v_y = seq_y[thre_pos_y];
 
 		cell_score = (v_x == v_y);
-		(v_x == 'N' || v_y == 'N') ? (cell_score = 0) : (0);
+		//(v_x == 'N' || v_y == 'N') ? (cell_score = 0) : (0);
 
 		for (int offset = 16; offset > 0; offset = offset >> 1)
 			cell_score += __shfl_down_sync(0xFFFFFFFF, cell_score, offset);
@@ -80,7 +80,7 @@ __device__ void right_extend(int32_t warp_pos_x_right, int32_t warp_pos_y_right,
 		char v_y = seq_y[thre_pos_y];
 
 		int cell_score = (v_x == v_y);
-		(v_x == 'N' || v_y == 'N') ? (cell_score = 0) : (0);
+		//(v_x == 'N' || v_y == 'N') ? (cell_score = 0) : (0);
 
 		for (int offset = 16; offset > 0; offset = offset >> 1)
 			cell_score += __shfl_down_sync(0xFFFFFFFF, cell_score, offset);
@@ -103,61 +103,65 @@ __device__ void right_extend(int32_t warp_pos_x_right, int32_t warp_pos_y_right,
 
 __global__ void kernel_frags_forward_register(uint32_t * h_p1, uint32_t * h_p2, uint32_t * left_offset, uint32_t * right_offset, const char * seq_x, const char * seq_y, uint32_t query_len, uint32_t ref_len, uint32_t x_seq_off, uint32_t y_seq_off, uint32_t x_lim, uint32_t y_lim, uint32_t n_hits_kept, uint32_t n_frags_per_block){
 
+	__shared__ int32_t hp1_shared[32];
+	__shared__ int32_t hp2_shared[32];
+	__shared__ int32_t diags_shared[32];
+	__shared__ int32_t l_o[32];
+	__shared__ int32_t r_o[32];
 
-	//if(threadIdx.x == 0) printf("%d Block %d started\n", atomicAdd(&totality, 1), blockIdx.x);
 
-	int32_t per_block = (uint32_t) n_frags_per_block;
+	//int32_t per_block = (uint32_t) n_frags_per_block;
     int32_t curr_frag = 0;
-    int32_t real_id = blockIdx.x * per_block;
-
+    int32_t real_id = blockIdx.x * 32;
     int32_t prev_d = 0xFFFFFFFF, x_begin = 0xFFFFFFFF, x_finish = 0xFFFFFFFF;
 
-    while(curr_frag < per_block)
+
+	hp1_shared[threadIdx.x]   = (int32_t) h_p1[real_id + threadIdx.x];
+	hp2_shared[threadIdx.x]   = (int32_t) h_p2[real_id + threadIdx.x];
+	diags_shared[threadIdx.x] = hp1_shared[threadIdx.x] - hp2_shared[threadIdx.x];
+
+
+    while(curr_frag < 32)
     {
 
 		if(real_id >= n_hits_kept) return;
 
-		// LEFT ALIGNMENT
-		int32_t hp1 = (int32_t) h_p1[real_id];
-		int32_t warp_pos_x_left = hp1;
-		int32_t warp_pos_y_left = (int32_t) h_p2[real_id];
-
+		int32_t hp1 = hp1_shared[curr_frag];
 		uint32_t best_offset_left = (uint32_t) hp1;
 
-		// Warp_pos_y_left is hp2[blockIdx.x]
-        if(prev_d == hp1-warp_pos_y_left && x_begin <= hp1 && hp1 <= x_finish) { ++real_id; ++curr_frag;  continue; }
+        if(prev_d == diags_shared[curr_frag] && x_begin <= hp1 && hp1 <= x_finish) {
+			l_o[curr_frag] = 0;
+	        r_o[curr_frag] = 0;
+			++real_id; ++curr_frag;  continue; 
+		}
 
-        // Save info on this frag
-        prev_d = hp1 - warp_pos_y_left;
-
-
-		int32_t warp_pos_x_right = hp1 + 32;
-		int32_t warp_pos_y_right = (int32_t) h_p2[real_id] + 32;
-		uint32_t best_offset_right = (uint32_t) warp_pos_x_right;
+		prev_d = diags_shared[curr_frag];
+		uint32_t best_offset_right = (uint32_t) hp1 + 32;
 
 
-		left_extend(warp_pos_x_left, warp_pos_y_left, x_seq_off, y_seq_off, &best_offset_left, seq_x, seq_y);
+		left_extend(hp1, hp2_shared[curr_frag], x_seq_off, y_seq_off, &best_offset_left, seq_x, seq_y);
 
-		right_extend(warp_pos_x_right, warp_pos_y_right, x_seq_off, y_seq_off, &best_offset_right, seq_x, seq_y, hp1, x_lim, y_lim);
+		right_extend(best_offset_right, hp2_shared[curr_frag] + 32, x_seq_off, y_seq_off, &best_offset_right, seq_x, seq_y, hp1, x_lim, y_lim);
 
 		x_begin  = best_offset_left;
 		x_finish = best_offset_right;
+
+		l_o[curr_frag] = hp1 - (uint32_t) best_offset_left;
+		r_o[curr_frag] = (uint32_t) (best_offset_right) - hp1;
+
 		++curr_frag;
-
-		// SAVE AT THE END
-
-		if(threadIdx.x == 0) left_offset[real_id] = hp1 - (uint32_t) best_offset_left;
-		if(threadIdx.x == 1) right_offset[real_id] = (uint32_t) (best_offset_right) - hp1;
-
 		++real_id;
 
 	}
 
-	//if(threadIdx.x == 0) printf("%d Block %d completed\n", atomicAdd(&totality, 1), blockIdx.x);
+	real_id = blockIdx.x * 32;
+	left_offset[real_id + threadIdx.x]  = l_o[threadIdx.x];
+	right_offset[real_id + threadIdx.x] = r_o[threadIdx.x];
+
 
 }
 
-	__global__ void kernel_frags_forward_per_thread(uint32_t * h_p1, uint32_t * h_p2, uint32_t * left_offset, uint32_t * right_offset, const char * seq_x, const char * seq_y, uint32_t query_len, uint32_t ref_len, uint32_t x_seq_off, uint32_t y_seq_off, uint32_t x_lim, uint32_t y_lim, uint32_t n_hits){
+__global__ void kernel_frags_forward_per_thread(uint32_t * h_p1, uint32_t * h_p2, uint32_t * left_offset, uint32_t * right_offset, const char * seq_x, const char * seq_y, uint32_t query_len, uint32_t ref_len, uint32_t x_seq_off, uint32_t y_seq_off, uint32_t x_lim, uint32_t y_lim, uint32_t n_hits){
 
 
 		// LEFT ALIGNMENT
