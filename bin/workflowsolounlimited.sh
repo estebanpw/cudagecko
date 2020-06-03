@@ -47,21 +47,21 @@ cd intermediateFiles/${seqXName}-${seqYName}
 
 
 echo "${BINDIR}/reverseComplement ${seqYName}.${extensionX} ${seqYName}-revercomp.${extensionY}"
-time ${BINDIR}/reverseComplement ${seqYName}.${extensionX} ${seqYName}-revercomp.${extensionY}
+/usr/bin/time -f "%e" ${BINDIR}/reverseComplement ${seqYName}.${extensionX} ${seqYName}-revercomp.${extensionY}
 
 if [[ ! -f ../dictionaries/${seqXName}.d2hP ]];	then
 	echo "${BINDIR}/dictionarysolounlimited.sh ${seqXName}.${extensionX}"
-	time ${BINDIR}/dictionarysolounlimited.sh ${seqXName}.${extensionX}
+	/usr/bin/time -f "%e" ${BINDIR}/dictionarysolounlimited.sh ${seqXName}.${extensionX}
 fi
 		
 if [[ ! -f ../dictionaries/${seqYName}.d2hP ]];	then
     echo "${BINDIR}/dictionarysolounlimited.sh ${seqYName}.${extensionY}"
-    time ${BINDIR}/dictionarysolounlimited.sh ${seqYName}.${extensionY}
+    /usr/bin/time -f "%e" ${BINDIR}/dictionarysolounlimited.sh ${seqYName}.${extensionY}
 fi
 		
 if [[ ! -f ../dictionaries/${seqYName}-revercomp.d2hP ]];	then
 	echo "${BINDIR}/dictionarysolounlimited.sh ${seqYName}-revercomp.${extensionY}"
-	time ${BINDIR}/dictionarysolounlimited.sh ${seqYName}-revercomp.${extensionY} 
+	/usr/bin/time -f "%e" ${BINDIR}/dictionarysolounlimited.sh ${seqYName}-revercomp.${extensionY} 
 fi		
 
 
@@ -93,7 +93,7 @@ ${BINDIR}/comparisonsolounlimited.sh ${seqXName}.${extensionX} ${seqYName}-rever
 #rm ${seqYName}-revercomp.${extensionY}
 
 echo "${BINDIR}/combineFrags ${seqXName}-${seqYName}-sf.frags ${seqXName}-${seqYName}-revercomp-sr.frags ${seqXName}-${seqYName}.frags"
-time ${BINDIR}/combineFrags ${seqXName}-${seqYName}-sf.frags ${seqXName}-${seqYName}-revercomp-sr.frags ${seqXName}-${seqYName}.frags
+/usr/bin/time -f "%e" ${BINDIR}/combineFrags ${seqXName}-${seqYName}-sf.frags ${seqXName}-${seqYName}-revercomp-sr.frags ${seqXName}-${seqYName}.frags
 
 #echo "${BINDIR}/newFragToBalazsVersion ${seqXName}-${seqYName}.frags ${seqXName}-${seqYName}.old.frags"
 #${BINDIR}/newFragToBalazsVersion ${seqXName}-${seqYName}.frags ${seqXName}-${seqYName}.old.frags
@@ -105,7 +105,7 @@ time ${BINDIR}/combineFrags ${seqXName}-${seqYName}-sf.frags ${seqXName}-${seqYN
 
 # Get Info from frags 
 echo "${BINDIR}/getInfo ${seqXName}-${seqYName}.frags > ${seqXName}-${seqYName}.csv.tmp"
-time ${BINDIR}/getInfo ${seqXName}-${seqYName}.frags > ${seqXName}-${seqYName}.csv.tmp
+/usr/bin/time -f "%e" ${BINDIR}/getInfo ${seqXName}-${seqYName}.frags > ${seqXName}-${seqYName}.csv.tmp
 cat ${seqXName}-${seqYName}.frags.INF ${seqXName}-${seqYName}.csv.tmp > ${seqXName}-${seqYName}.csv
 rm -rf ${seqXName}-${seqYName}.csv.tmp
 	
