@@ -150,6 +150,15 @@ int main(int argc, char ** argv)
 
     fprintf(stdout, "[INFO] Qlen: %"PRIu32"; Rlen: %"PRIu32"\n", query_len, ref_len);
 
+	FILE * jiji = fopen("jiji-query", "wt");
+	fprintf(jiji, "%.*s\n", query_len, pro_q_buffer);
+	fclose(jiji);
+
+	jiji = fopen("jiji-ref", "wt");
+	fprintf(jiji, "%.*s\n", ref_len, pro_r_buffer);
+	fclose(jiji);
+
+
     // Check that sequence length complies
     if(MAX(query_len, ref_len) >= 2147483648){
         fprintf(stdout, "[WARNING] !!!!!!!!!!!!!!!!!!!!!!\n");
@@ -371,6 +380,9 @@ int main(int argc, char ** argv)
     fprintf(stdout, "\t(End   ref)%.64s\n", &ref_seq_host[ref_len-64]);
     fprintf(stdout, "\t(End   rev)%.64s\n", &ref_rev_seq_host[ref_len-64]);
 
+	jiji = fopen("jiji-rev-ref", "wt");
+	fprintf(jiji, "%.*s\n", ref_len, ref_rev_seq_host);
+	fclose(jiji);
      
     //fprintf(stdout, "\t(Full que)%.*s\n", query_len, query_seq_host);
     //fprintf(stdout, "\t(Full ref)%.*s\n", ref_len, ref_seq_host);

@@ -18,11 +18,35 @@ SUBFASTAS="subfastas-$EASYX-$EASYY"
 
 (mkdir $SUBFASTAS) &> /dev/null
 
-grep -v ">" $FASTAX | tr -d '\n' > $SUBFASTAS/x.fasta
-grep -v ">" $FASTAY | tr -d '\n' > $SUBFASTAS/y.fasta
+# Substitute all ">" (except first one) by "N" 
 
-$REVCOM/reverseComplement $FASTAY $SUBFASTAS/yrev.temp
-grep -v ">" $SUBFASTAS/yrev.temp | tr -d '\n' > $SUBFASTAS/yrev.fasta
+NSEQSX=$(grep ">" $FASTAX | wc -l)
+NSEQSY=$(grep ">" $FASTAY | wc -l)
+
+echo "> Query sequences from 0 to $NSEQSX - 1" > $SUBFASTAS/x.fasta
+echo "> Ref sequences from 0 to $NSEQSY - 1" > $SUBFASTAS/y.fasta
+
+
+sed 's/>.*/N/g' $FASTAX | tail -c +2 > $FASTAX.noheader
+sed 's/>.*/N/g' $FASTAY | tail -c +2 > $FASTAY.noheader
+
+
+cat $FASTAX.noheader | tr -d '\n' >> $SUBFASTAS/x.fasta
+cat $FASTAY.noheader | tr -d '\n' >> $SUBFASTAS/y.fasta
+
+rm $FASTAX.noheader $FASTAY.noheader
+
+
+$REVCOM/reverseComplement $SUBFASTAS/y.fasta $SUBFASTAS/yrev.fasta
+
+grep -v ">" $SUBFASTAS/yrev.fasta | tr -d '\n' > $SUBFASTAS/yrev.fix
+grep -v ">" $SUBFASTAS/x.fasta | tr -d '\n' > $SUBFASTAS/x.fix
+grep -v ">" $SUBFASTAS/y.fasta | tr -d '\n' > $SUBFASTAS/y.fix
+
+mv $SUBFASTAS/yrev.fix $SUBFASTAS/yrev.fasta
+mv $SUBFASTAS/x.fix $SUBFASTAS/x.fasta
+mv $SUBFASTAS/y.fix $SUBFASTAS/y.fasta
+
 
 FILTERX=./$SUBFASTAS/x.fasta
 FILTERY=./$SUBFASTAS/y.fasta

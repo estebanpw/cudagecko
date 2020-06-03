@@ -671,14 +671,18 @@ uint32_t load_seq(FILE * f, char * seq) {
 }
 
 uint32_t from_ram_load(char * ram, char * dst, uint32_t size) {
-    char c = '\0';
+    char c = ram[0];
     uint32_t l = 0;
     uint32_t real_l = 0;
+
+	while(c != '>')  c = ram[l++];
+	while(c != '\n') c = ram[l++];
 
     while(l<size){
         c = ram[l++];
 
         if(c == '>'){
+			dst[real_l++] = 'N';
             while(c != '\n') c = ram[l++];
         }
         c = toupper(c);

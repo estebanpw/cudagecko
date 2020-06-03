@@ -653,14 +653,14 @@ __global__ void kernel_index_global32_advanced(uint64_t * hashes, uint32_t * pos
 
 __global__ void kernel_reverse_complement(const char * sequence, char * reverse_sequence, uint32_t seq_len) {
 	
-	uint32_t id = threadIdx.x + blockIdx.x * blockDim.x;
-	
+	int32_t id = threadIdx.x + blockIdx.x * blockDim.x;
+	int32_t sslen = (int32_t) seq_len;
 
 	if(id < seq_len){
     // This if is not bad since only the last block will not work it in lockstep
 
 		//uint64_t lookup = seq_len - id;
-		uint32_t lookup = (seq_len - 1) - id;
+		int32_t lookup = (sslen - 1) - id;
 		char original = sequence[id];
 
         
