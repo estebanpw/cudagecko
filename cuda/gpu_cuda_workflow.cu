@@ -19,7 +19,7 @@ uint64_t memory_allocation_chooser(uint64_t total_memory);
 
 int main(int argc, char ** argv)
 {
-    uint32_t i, min_length = 64, max_frequency = 0, n_frags_per_block = 32;
+    uint32_t i, min_length = 64, max_frequency = 0, n_frags_per_block = 1;
     float factor = 0.125;
     int fast = 0; // sensitive is default
     unsigned selected_device = 0;
@@ -1099,6 +1099,7 @@ int main(int argc, char ** argv)
             
             filter_and_write_frags(filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, n_hits_kept, out, 'f', ref_len, min_length);
 
+
         }
 
         // Restart the reference for every block in query
@@ -1432,9 +1433,12 @@ int main(int argc, char ** argv)
 
             //number_of_blocks = 20; // REMOVE !!
 
+			number_of_blocks = (n_hits_kept / n_frags_per_block) + 1;
+
             if(number_of_blocks != 0)
-            {
-                kernel_frags_reverse_register<<<number_of_blocks, threads_number>>>(ptr_device_filt_hits_x, ptr_device_filt_hits_y, ptr_left_offset, ptr_right_offset, ptr_seq_dev_mem, ptr_seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len), n_hits_kept, n_frags_per_block);
+			{
+				// Plot twist: its the same kernel for forward and reverse since sequence is completely reversed
+                kernel_frags_forward_register<<<number_of_blocks, threads_number>>>(ptr_device_filt_hits_x, ptr_device_filt_hits_y, ptr_left_offset, ptr_right_offset, ptr_seq_dev_mem, ptr_seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len), n_hits_kept, n_frags_per_block);
 
                 ret = cudaDeviceSynchronize();
                 if(ret != cudaSuccess){ fprintf(stderr, "Failed on generating forward frags. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }

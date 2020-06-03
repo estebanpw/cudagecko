@@ -28,9 +28,9 @@ __device__ void left_extend(int32_t warp_pos_x_left, int32_t warp_pos_y_left, ui
 
 	int32_t hp1 = warp_pos_x_left;
 	*best_offset_left = (uint32_t) warp_pos_x_left;
-    int32_t score = 32, best_score = 32, total_idents = 16; // Half of the hit for each side
-    int p_ident = 100;
-    int cell_score;
+	int32_t score = 32, best_score = 32, total_idents = 16; // Half of the hit for each side
+	int p_ident = 100;
+	int cell_score;
 	int32_t thre_pos_x = warp_pos_x_left + threadIdx.x - (int32_t) x_seq_off;
 	int32_t thre_pos_y = warp_pos_y_left + threadIdx.x - (int32_t) y_seq_off;
 
@@ -59,7 +59,7 @@ __device__ void left_extend(int32_t warp_pos_x_left, int32_t warp_pos_y_left, ui
 		total_idents += (int32_t) idents;
 		score = score - (int32_t) (32 - idents);
 		p_ident = ((100 * total_idents) / (int) (hp1 - warp_pos_x_left + 16));
-        if(score > best_score && p_ident >= MIN_P_IDENT){ best_score = score; *best_offset_left = warp_pos_x_left; }
+		if(score > best_score && p_ident >= MIN_P_IDENT){ best_score = score; *best_offset_left = warp_pos_x_left; }
 
 	}
 
@@ -69,10 +69,10 @@ __device__ void right_extend(int32_t warp_pos_x_right, int32_t warp_pos_y_right,
 {
 	int32_t thre_pos_x = warp_pos_x_right + threadIdx.x - (int32_t) x_seq_off;
 	int32_t thre_pos_y = warp_pos_y_right + threadIdx.x - (int32_t) y_seq_off;
-    int32_t score = 32;
-    int32_t total_idents = 16;
-    int32_t best_score = 32;
-    int p_ident = 100;
+	int32_t score = 32;
+	int32_t total_idents = 16;
+	int32_t best_score = 32;
+	int p_ident = 100;
 
 	while(score > 0 && (warp_pos_x_right + 32) < (int32_t) x_lim && (warp_pos_y_right + 32) < (int32_t) y_lim)
 	{
