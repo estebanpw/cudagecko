@@ -9,7 +9,10 @@ BIN=../bin
 NVIDIAFLAGS=-rdc=true -O3 -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE -DCACHED -DSHOWTIME #--ptxas-options=-v #-DVERBOSE
 #NVIDIAFLAGS=-rdc=true -O3 -gencode arch=compute_52,code=compute_52 -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE -DCACHED -DSHOWTIME #-DVERBOSE
 
-all: gpu_cuda_workflow
+all: gpu_cuda_workflow get_alignments
 
 gpu_cuda_workflow: gpu_cuda_workflow.cu
 	$(NVIDIAC) $(NVIDIAFLAGS) gpu_cuda_workflow.cu kernels.cu -o $(BIN)/gpu_cuda_workflow
+
+get_alignments: get_alignments.c
+	$(CXX) $(CFLAGS) get_alignments.c common.c -o $(BIN)/gpu_get_alignments
