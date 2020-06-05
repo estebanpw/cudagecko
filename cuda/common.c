@@ -167,9 +167,14 @@ void get_alignments(char * s_x, char * s_y, char * r_y, uint64_t l_fastax, uint6
 		}
 
 		fprintf(stdout, "\n%.*s\n", (int) len, bottom);
-		uint64_t posX, posY;
-		uint64_t closest = search(xstart, index_x, index_x->size(), &posX);
-		if(strand == 'f') closest = search(ystart, index_y, index_y->size(), &posY); else closest = search(ystart, index_r, index_r->size(), &posY);
+		uint64_t posX, posY, closest;
+		if(index_x->size() > 0)	closest = search(xstart, index_x, index_x->size(), &posX); else posX = 0;
+		if(index_y->size() > 0)
+		{
+			if(strand == 'f') closest = search(ystart, index_y, index_y->size(), &posY); else closest = search(ystart, index_r, index_r->size(), &posY);
+		}else{
+			posY = 0;
+		}
 		fprintf(stdout, "Query %lu Reference %lu HSP strand %c @ %lu %lu Idents %lu / %lu ( %.2f %%)\n", posX, posY, strand, xstart, ystart, idents, len, 100*(float)idents/(float)len);
 
 		fprintf(stdout, "------------\n");
@@ -181,6 +186,7 @@ void get_alignments(char * s_x, char * s_y, char * r_y, uint64_t l_fastax, uint6
 
 
 uint64_t search(uint64_t value, std::vector<uint64_t> * a, uint64_t l, uint64_t * pos) {
+
 
 	if(value < a->at(0)) {
 		*pos = 0;
