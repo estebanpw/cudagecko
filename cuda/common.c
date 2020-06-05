@@ -139,7 +139,7 @@ void get_alignments(char * s_x, char * s_y, char * r_y, uint64_t l_fastax, uint6
 		uint64_t t = strlen(buff);
 		for(i=0; i<t; i++) if(buff[i] == ',') buff[i] = ' ';
 
-		sscanf(buff, "%*s %"PRIu64" %"PRIu64" %"PRIu64" %"PRIu64" %c %*"PRIu64" %"PRIu64" %*"PRIu64" %*"PRIu64" %*f %*f %*u %*u", &xstart, &ystart, &xend, &yend, &strand, &len);
+		sscanf(buff, "%*s %lu %lu %lu %lu %c %*u %lu %*u %*u %*f %*f %*u %*u", &xstart, &ystart, &xend, &yend, &strand, &len);
 
 		if(strand == 'f')
 		{
@@ -167,10 +167,12 @@ void get_alignments(char * s_x, char * s_y, char * r_y, uint64_t l_fastax, uint6
 		}
 
 		fprintf(stdout, "\n%.*s\n", (int) len, bottom);
-		uint64_t pos;
-		uint64_t closest = search(xstart, index_x, index_x->size(), &pos);
-		fprintf(stdout, "Query %lu HSP strand %c @ %lu %lu Idents %lu / %lu ( %.2f %%)\n", pos, strand, xstart, ystart, idents, len, 100*(float)idents/(float)len);
+		uint64_t posX, posY;
+		uint64_t closest = search(xstart, index_x, index_x->size(), &posX);
+		if(strand == 'f') closest = search(ystart, index_y, index_y->size(), &posY); else closest = search(ystart, index_r, index_r->size(), &posY);
+		fprintf(stdout, "Query %lu Reference %lu HSP strand %c @ %lu %lu Idents %lu / %lu ( %.2f %%)\n", posX, posY, strand, xstart, ystart, idents, len, 100*(float)idents/(float)len);
 
+		fprintf(stdout, "------------\n");
 
 	}
 	
@@ -181,9 +183,11 @@ void get_alignments(char * s_x, char * s_y, char * r_y, uint64_t l_fastax, uint6
 uint64_t search(uint64_t value, std::vector<uint64_t> * a, uint64_t l, uint64_t * pos) {
 
 	if(value < a->at(0)) {
+		*pos = 0;
 		return a->at(0);
 	}
 	if(value > a->at(l-1)) {
+		*pos = l-1;
 		return a->at(l-1);
 	}
 
@@ -202,7 +206,6 @@ uint64_t search(uint64_t value, std::vector<uint64_t> * a, uint64_t l, uint64_t 
 			return a->at(mid);
 		}
 	}
-	// lo == hi + 1
 	((int64_t) a->at(lo) - (int64_t) value) < ((int64_t)value - (int64_t) a->at(hi)) ? (*pos = (uint64_t) lo) : (*pos = (uint64_t) hi);
 	return (uint64_t) ((int64_t) a->at(lo) - (int64_t) value) < ((int64_t)value - (int64_t) a->at(hi)) ? a->at(lo) : a->at(hi);
 }

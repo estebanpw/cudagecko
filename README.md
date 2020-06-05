@@ -20,15 +20,17 @@ For a list of parameters, use --help
 
 Some useful parameters:
 
-1. -len <min len for an HSP to be reported, default: 32> NOTE: length runs in multiples of 32, so using 50 for instance will yield HSPs of 64 or more
-2. -dev <ID of the gpu device to use, default: 0>
-3. -factor <float between 0 and 1 to select the percentage of GPU memory reserved for words, default 0.125> NOTE: lower only if running out of memory for hits
+1. -len        <min len for an HSP to be reported, default: 32> NOTE: length runs in multiples of 32, so using 50 for instance will yield HSPs of 64 or more
+2. -dev        <ID of the gpu device to use, default: 0>
+3. -factor     <float between 0 and 1 to select the percentage of GPU memory reserved for words, default 0.125> NOTE: lower only if running out of memory for hits>
+4. -max_freq   <only works in --sensitive Maximum frequency per hit (default: unlimited) (fast mode can skip highly repeated seeds)>
+5. -fast       <Runs in fast mode as opposed to sensitive which is the default. This mode skips lots of seeds>
 
 ## Extracting alignments
 
-To get the alignments reported in the CSV, simply run the "gpu_get_alignments.sh" script in the binary folder such as this:
+To get the alignments reported in the CSV, run the gpu_get_alignments tool in the binary folder such as this:
 
-cudagecko/bin/gpu_get_alignments.sh csvFile inputQueryFasta inputReferenceFasta > output-alignments
+cudagecko/bin/gpu_get_alignments csvFile inputQueryFasta inputReferenceFasta > output-alignments
 
 ## Visualization
 

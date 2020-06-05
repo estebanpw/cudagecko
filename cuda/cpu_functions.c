@@ -486,7 +486,7 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
     while(pNum < argc){
         if(strcmp(av[pNum], "--help") == 0){
             fprintf(stdout, "USAGE:\n");
-            fprintf(stdout, "           GECKOCUDA -query [file] -ref [file] -dev [device]\n");
+            fprintf(stdout, "           GPUGECKO -query [file] -ref [file] -dev [device]\n");
             fprintf(stdout, "OPTIONAL:\n");
             fprintf(stdout, "           -len        Minimum length of a frag (default 32)\n");
             fprintf(stdout, "           -max_freq   [only works in --sensitive] Maximum frequency per hit (default: unlimited)\n");
