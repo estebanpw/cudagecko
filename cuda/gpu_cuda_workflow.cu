@@ -20,7 +20,7 @@ uint64_t memory_allocation_chooser(uint64_t total_memory);
 
 int main(int argc, char ** argv)
 {
-    uint32_t i, min_length = 64, max_frequency = 0, n_frags_per_block = 1;
+    uint32_t i, min_length = 64, max_frequency = 0, n_frags_per_block = 32;
     float factor = 0.125;
     int fast = 0; // sensitive is default
     unsigned selected_device = 0;
