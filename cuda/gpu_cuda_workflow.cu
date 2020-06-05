@@ -49,11 +49,11 @@ int main(int argc, char ** argv)
     for(i=0; i<ret_num_devices; i++){
         if( cudaSuccess != (ret = cudaGetDeviceProperties(&device, i))){ fprintf(stderr, "Failed to get cuda device property: %d\n", ret); exit(-1); }
 
-        fprintf(stdout, "\tDevice [%"PRIu32"]: %s\n", i, device.name);
+        fprintf(stdout, "\tDevice [%" PRIu32"]: %s\n", i, device.name);
         global_device_RAM = device.totalGlobalMem;
-        fprintf(stdout, "\t\tGlobal mem   : %"PRIu64" (%"PRIu64" MB)\n", global_device_RAM, global_device_RAM / (1024*1024));
+        fprintf(stdout, "\t\tGlobal mem   : %" PRIu64" (%" PRIu64" MB)\n", global_device_RAM, global_device_RAM / (1024*1024));
         //compute_units = device.multiProcessorCount;
-        //fprintf(stdout, "\t\tCompute units: %"PRIu64"\n", (uint64_t) compute_units);
+        //fprintf(stdout, "\t\tCompute units: %" PRIu64"\n", (uint64_t) compute_units);
         //work_group_size_local = device.maxThreadsPerBlock;
         //fprintf(stdout, "\t\tMax work group size: %d\n", work_group_size_local);
         //fprintf(stdout, "\t\tWork size dimensions: (%d, %d, %d)\n", work_group_dimensions[0], work_group_dimensions[1], work_group_dimensions[2]);
@@ -91,14 +91,14 @@ int main(int argc, char ** argv)
     ret = cudaMalloc(&data_mem, (effective_global_ram - bytes_to_subtract) * sizeof(char)); 
     if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pool memory in device. Error: %d\n", ret); exit(-1); }
 
-    fprintf(stdout, "[INFO] You can have %"PRIu64" MB for words (i.e. %"PRIu64" words), and %"PRIu64" MB for hits (i.e. %"PRIu64" hits)\n", 
+    fprintf(stdout, "[INFO] You can have %" PRIu64" MB for words (i.e. %" PRIu64" words), and %" PRIu64" MB for hits (i.e. %" PRIu64" hits)\n", 
         bytes_for_words / (1024*1024), words_at_once, (effective_global_ram - bytes_for_words) / (1024*1024), max_hits);
 
-    fprintf(stdout, "[INFO] Filtering at a minimum length of %"PRIu32" bps\n", min_length);
+    fprintf(stdout, "[INFO] Filtering at a minimum length of %" PRIu32" bps\n", min_length);
     if(fast == 1) 
         fprintf(stdout, "[INFO] Running on fast mode (some repetitive seeds will be skipped)\n");
     else
-        fprintf(stdout, "[INFO] Running on sensitive mode (ALL seeds are computed [mf:%"PRIu32"])\n", max_frequency);
+        fprintf(stdout, "[INFO] Running on sensitive mode (ALL seeds are computed [mf:%" PRIu32"])\n", max_frequency);
 
     
 
@@ -143,7 +143,7 @@ int main(int argc, char ** argv)
     free(s_buffer);
 
 
-    fprintf(stdout, "[INFO] Qlen: %"PRIu32"; Rlen: %"PRIu32"\n", query_len, ref_len);
+    fprintf(stdout, "[INFO] Qlen: %" PRIu32"; Rlen: %" PRIu32"\n", query_len, ref_len);
 
 
 
@@ -174,7 +174,7 @@ int main(int argc, char ** argv)
     uint64_t pinned_address_checker = 0;
 
 
-    fprintf(stdout, "[INFO] Allocating on host %"PRIu64" bytes (i.e. %"PRIu64" MBs)\n", pinned_bytes_on_host, pinned_bytes_on_host / (1024*1024));
+    fprintf(stdout, "[INFO] Allocating on host %" PRIu64" bytes (i.e. %" PRIu64" MBs)\n", pinned_bytes_on_host, pinned_bytes_on_host / (1024*1024));
     ret = cudaHostAlloc(&host_pinned_mem, pinned_bytes_on_host, cudaHostAllocMapped); 
     if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for pool. Error: %d\n", ret); exit(-1); }
     
@@ -236,7 +236,7 @@ int main(int argc, char ** argv)
     
     /*
     ret = cudaMalloc(&seq_dev_mem_reverse_aux, ref_len * sizeof(char)); 
-    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for reverse reference sequence in device (Attempted %"PRIu32" bytes) at reversing. Error: %d\n", (uint32_t) (ref_len * sizeof(char)), ret); exit(-1); }
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for reverse reference sequence in device (Attempted %" PRIu32" bytes) at reversing. Error: %d\n", (uint32_t) (ref_len * sizeof(char)), ret); exit(-1); }
     */
 
     // ## POINTER SECTION 0
@@ -538,7 +538,7 @@ int main(int argc, char ** argv)
         // Allocate memory in device for sequence chunk
         // We have to this here since later on we will have to free all memory to load the hits
         //ret = cudaMalloc(&seq_dev_mem, words_at_once * sizeof(char));
-        //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for query sequence in device (Attempted %"PRIu32" bytes). Error: %d\n", (uint32_t) (words_at_once * sizeof(char)), ret); exit(-1); }
+        //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for query sequence in device (Attempted %" PRIu32" bytes). Error: %d\n", (uint32_t) (words_at_once * sizeof(char)), ret); exit(-1); }
 
         // Allocate words table
         //ret = cudaMalloc(&keys, words_at_once * sizeof(uint64_t));
@@ -612,7 +612,7 @@ int main(int argc, char ** argv)
         ret = cudaMemcpy(poses, values, items_read_x*sizeof(uint64_t), cudaMemcpyDeviceToHost);
         FILE * anything8 = fopen("kmers", "a");
         for(i=0; i<words_at_once; i++){
-            fprintf(anything8, "%"PRIu64" %"PRIu64" %"PRIu64"\n", i, poses[i], kmers[i]);
+            fprintf(anything8, "%" PRIu64" %" PRIu64" %" PRIu64"\n", i, poses[i], kmers[i]);
         }
         free(kmers); free(poses);
         fclose(anything8);
@@ -687,7 +687,7 @@ int main(int argc, char ** argv)
 
         // Print hits for debug
         //for(i=0; i<items_read_x; i++){
-        //    fprintf(out, "%"PRIu64"\n", dict_x_values[i]);
+        //    fprintf(out, "%" PRIu64"\n", dict_x_values[i]);
         //}
 
         //ret = cudaFree(d_temp_storage);
@@ -854,10 +854,10 @@ int main(int argc, char ** argv)
             
             //read_kmers(query_len, query_seq_host, dict_x_keys, dict_x_values);
             //Qsort(dict_x_keys, dict_x_values, 0, (int64_t) query_len);
-            //for(i=0; i<words_at_once; i++) printf("%" PRIu64" %"PRIu64"\n", dict_x_keys[i], dict_x_values[i]);
+            //for(i=0; i<words_at_once; i++) printf("%"  PRIu64" %" PRIu64"\n", dict_x_keys[i], dict_x_values[i]);
             //read_kmers(ref_len, ref_seq_host, dict_y_keys, dict_y_values);
             //Qsort(dict_y_keys, dict_y_values, 0, (int64_t) ref_len);
-            //for(i=0; i<words_at_once; i++) printf("%" PRIu64" %"PRIu64"\n", dict_y_keys[i], dict_y_values[i]);
+            //for(i=0; i<words_at_once; i++) printf("%"  PRIu64" %" PRIu64"\n", dict_y_keys[i], dict_y_values[i]);
 
             
             //cudaFree(keys);
@@ -879,16 +879,16 @@ int main(int argc, char ** argv)
             fprintf(stdout, "[INFO] hits Q-R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
 #endif
 
-            fprintf(stdout, "[INFO] Generated %"PRIu32" hits on split %d -> (%d%%)[%u,%u]{%u,%u}\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len), pos_in_query, pos_in_ref, items_read_x, items_read_y);
+            fprintf(stdout, "[INFO] Generated %" PRIu32" hits on split %d -> (%d%%)[%u,%u]{%u,%u}\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len), pos_in_query, pos_in_ref, items_read_x, items_read_y);
 
             // Print hits for debug
             //for(i=0; i<n_hits_found; i++){
-            //    fprintf(stdout, "%"PRIu32"\n", dict_x_values[i]);
+            //    fprintf(stdout, "%" PRIu32"\n", dict_x_values[i]);
             //}
             //for(i=0; i<n_hits_found; i++){
-                //printf("%"PRIu64"\n", diagonals[i]);
+                //printf("%" PRIu64"\n", diagonals[i]);
                 //if(hits[i].p1 > 368000 && hits[i].p2 < 390000)
-                    //fprintf(out, "Frag,d:%"PRId64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,32,32,32,1.0,1.0,0,0\n", (int64_t) hits[i].p1 - (int64_t) hits[i].p2, hits[i].p1, hits[i].p2, hits[i].p1+32, hits[i].p2+32);
+                    //fprintf(out, "Frag,d:%"PRId64",%" PRIu64",%" PRIu64",%" PRIu64",%" PRIu64",f,0,32,32,32,1.0,1.0,0,0\n", (int64_t) hits[i].p1 - (int64_t) hits[i].p2, hits[i].p1, hits[i].p2, hits[i].p1+32, hits[i].p2+32);
             //}
 
             ////////////////////////////////////////////////////////////////////////////////
@@ -968,7 +968,7 @@ int main(int argc, char ** argv)
 
             //
             //for(i=0; i<n_hits_found; i++){
-            //    fprintf(stdout, "%"PRIu32" %"PRIu32"\n", hits[indexing_numbers[i]].p1, hits[indexing_numbers[i]].p2);
+            //    fprintf(stdout, "%" PRIu32" %" PRIu32"\n", hits[indexing_numbers[i]].p1, hits[indexing_numbers[i]].p2);
             //}
 
             end = clock();
@@ -988,11 +988,11 @@ int main(int argc, char ** argv)
             fprintf(stdout, "[INFO] filter hits Q-R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
 #endif
 
-            fprintf(stdout, "[INFO] Remaining hits %"PRIu32"\n", n_hits_kept);
+            fprintf(stdout, "[INFO] Remaining hits %" PRIu32"\n", n_hits_kept);
 
             //for(i=0; i<n_hits_kept; i++){
-                //printf("%"PRIu64"\n", diagonals[i]);
-                //fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,32,32,32,1.0,1.0,0,0\n", filtered_hits_x[i], filtered_hits_y[i], filtered_hits_x[i]+32, filtered_hits_y[i]+32);
+                //printf("%" PRIu64"\n", diagonals[i]);
+                //fprintf(out, "Frag,%" PRIu64",%" PRIu64",%" PRIu64",%" PRIu64",f,0,32,32,32,1.0,1.0,0,0\n", filtered_hits_x[i], filtered_hits_y[i], filtered_hits_x[i]+32, filtered_hits_y[i]+32);
             //}
             
             //ret = cudaFree(d_temp_storage);
@@ -1054,8 +1054,8 @@ int main(int argc, char ** argv)
 
             //
             //for(i=n_hits_kept-1; i>1; i--){
-            //    printf(" Frag %"PRIu64" \t x: %.32s %"PRIu64"\n", i, &query_seq_host[filtered_hits_x[i]], filtered_hits_x[i]);
-            //    printf(" \t\t y: %.32s %"PRIu64"\n", &ref_seq_host[filtered_hits_y[i]], filtered_hits_y[i]);
+            //    printf(" Frag %" PRIu64" \t x: %.32s %" PRIu64"\n", i, &query_seq_host[filtered_hits_x[i]], filtered_hits_x[i]);
+            //    printf(" \t\t y: %.32s %" PRIu64"\n", &ref_seq_host[filtered_hits_y[i]], filtered_hits_y[i]);
             //}
 
             //number_of_blocks = n_hits_kept; 
@@ -1098,9 +1098,9 @@ int main(int argc, char ** argv)
                 uint64_t best_yEnd = filtered_hits_y[i] + host_right_offset[i];
 
                 int64_t d = (filtered_hits_x[i] - filtered_hits_y[i]);
-                //fprintf(anything3, "hitx: %"PRIu64" hity: %"PRIu64" (d: %"PRId64") -> Frag,(%"PRId64"),%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64"\n", filtered_hits_x[i], filtered_hits_y[i], d, (int64_t)best_xStart-(int64_t)best_yStart, best_xStart, best_yStart, best_xEnd, best_yEnd, best_xEnd-best_xStart);
-                //fprintf(anything3, "Frag,%"PRId64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,%"PRIu64",32,32,1.0,1.0,0,0\n", d, filtered_hits_x[i], filtered_hits_y[i], best_xStart, best_yStart, best_xEnd, best_yEnd, best_xEnd-best_xStart);
-                fprintf(anything3, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,%"PRIu64",32,32,1.0,1.0,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, best_xEnd-best_xStart);
+                //fprintf(anything3, "hitx: %" PRIu64" hity: %" PRIu64" (d: %"PRId64") -> Frag,(%"PRId64"),%" PRIu64",%" PRIu64",%" PRIu64",%" PRIu64",%" PRIu64"\n", filtered_hits_x[i], filtered_hits_y[i], d, (int64_t)best_xStart-(int64_t)best_yStart, best_xStart, best_yStart, best_xEnd, best_yEnd, best_xEnd-best_xStart);
+                //fprintf(anything3, "Frag,%"PRId64",%" PRIu64",%" PRIu64",%" PRIu64",%" PRIu64",%" PRIu64",%" PRIu64",f,0,%" PRIu64",32,32,1.0,1.0,0,0\n", d, filtered_hits_x[i], filtered_hits_y[i], best_xStart, best_yStart, best_xEnd, best_yEnd, best_xEnd-best_xStart);
+                fprintf(anything3, "Frag,%" PRIu64",%" PRIu64",%" PRIu64",%" PRIu64",f,0,%" PRIu64",32,32,1.0,1.0,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, best_xEnd-best_xStart);
             }
             fclose(anything3);
             */
@@ -1272,7 +1272,7 @@ int main(int argc, char ** argv)
             fprintf(stdout, "[INFO] hits Q-RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
 #endif
 
-            fprintf(stdout, "[INFO] Generated %"PRIu32" hits on reversed split %d -> (%d%%)[%u,%u]{%u,%u}\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len), pos_in_query, pos_in_ref, items_read_x, items_read_y);
+            fprintf(stdout, "[INFO] Generated %" PRIu32" hits on reversed split %d -> (%d%%)[%u,%u]{%u,%u}\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len), pos_in_query, pos_in_ref, items_read_x, items_read_y);
 
 
             //printf("VALHALA 1\n");
@@ -1365,7 +1365,7 @@ int main(int argc, char ** argv)
             fprintf(stdout, "[INFO] filter hits Q-RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
 #endif
 
-            fprintf(stdout, "[INFO] Remaining hits %"PRIu32"\n", n_hits_kept);
+            fprintf(stdout, "[INFO] Remaining hits %" PRIu32"\n", n_hits_kept);
 
             //printf("VALHALA 2\n");
             //continue;
@@ -1382,7 +1382,7 @@ int main(int argc, char ** argv)
                 uint64_t best_yStart = ref_len - filtered_hits_y[i] - 1;
                 uint64_t best_yEnd = ref_len - (filtered_hits_y[i]+32) - 1;
                 //int64_t d = filtered_hits_x[i] + best_yStart;
-                fprintf(anything2, "Frag,%"PRId64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,32,32,32,1.0,1.0,0,0\n", d, filtered_hits_x[i], best_yStart, filtered_hits_x[i]+32, best_yEnd);
+                fprintf(anything2, "Frag,%"PRId64",%" PRIu64",%" PRIu64",%" PRIu64",%" PRIu64",f,0,32,32,32,1.0,1.0,0,0\n", d, filtered_hits_x[i], best_yStart, filtered_hits_x[i]+32, best_yEnd);
             }
             fclose(anything2);
             */
@@ -1445,8 +1445,8 @@ int main(int argc, char ** argv)
 
             //
             //for(i=n_hits_kept-1; i>1; i--){
-            //    printf(" Frag %"PRIu64" \t x: %.32s %"PRIu64"\n", i, &query_seq_host[filtered_hits_x[i]], filtered_hits_x[i]);
-            //    printf(" \t\t y: %.32s %"PRIu64"\n", &ref_seq_host[filtered_hits_y[i]], filtered_hits_y[i]);
+            //    printf(" Frag %" PRIu64" \t x: %.32s %" PRIu64"\n", i, &query_seq_host[filtered_hits_x[i]], filtered_hits_x[i]);
+            //    printf(" \t\t y: %.32s %" PRIu64"\n", &ref_seq_host[filtered_hits_y[i]], filtered_hits_y[i]);
             //}
 
             //printf("VALHALA 3\n");
@@ -1494,8 +1494,8 @@ int main(int argc, char ** argv)
                 int64_t d = (filtered_hits_x[i] + filtered_hits_y[i]);
 
 
-                fprintf(anything, "hitx: %"PRIu64" hity: %"PRIu64" (d: %"PRId64") -> Frag,(%"PRId64"),%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64"\n", filtered_hits_x[i], filtered_hits_y[i], d, (int64_t)best_xStart+(int64_t)best_yStart, best_xStart, best_yStart, best_xEnd, best_yEnd, best_xEnd-best_xStart);
-                //fprintf(anything, "Frag,%"PRId64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",f,0,%"PRIu64",32,32,1.0,1.0,0,0\n", d, filtered_hits_x[i], filtered_hits_y[i], best_xStart, best_yStart, best_xEnd, best_yEnd, best_xEnd-best_xStart);
+                fprintf(anything, "hitx: %" PRIu64" hity: %" PRIu64" (d: %"PRId64") -> Frag,(%"PRId64"),%" PRIu64",%" PRIu64",%" PRIu64",%" PRIu64",%" PRIu64"\n", filtered_hits_x[i], filtered_hits_y[i], d, (int64_t)best_xStart+(int64_t)best_yStart, best_xStart, best_yStart, best_xEnd, best_yEnd, best_xEnd-best_xStart);
+                //fprintf(anything, "Frag,%"PRId64",%" PRIu64",%" PRIu64",%" PRIu64",%" PRIu64",%" PRIu64",%" PRIu64",f,0,%" PRIu64",32,32,1.0,1.0,0,0\n", d, filtered_hits_x[i], filtered_hits_y[i], best_xStart, best_yStart, best_xEnd, best_yEnd, best_xEnd-best_xStart);
             }
             fclose(anything);
             */
@@ -1584,8 +1584,8 @@ void print_header(FILE * out, uint32_t query_len, uint32_t ref_len){
     fprintf(out, "SeqY filename : undef\n");
     fprintf(out, "SeqX name : undef\n");
     fprintf(out, "SeqY name : undef\n");
-    fprintf(out, "SeqX length : %"PRIu32"\n", query_len);
-    fprintf(out, "SeqY length : %"PRIu32"\n", ref_len);
+    fprintf(out, "SeqX length : %" PRIu32"\n", query_len);
+    fprintf(out, "SeqY length : %" PRIu32"\n", ref_len);
     fprintf(out, "Min.fragment.length : undef\n");
     fprintf(out, "Min.Identity : undef\n");
     fprintf(out, "Tot Hits (seeds) : undef\n");

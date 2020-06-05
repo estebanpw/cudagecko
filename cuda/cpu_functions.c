@@ -43,12 +43,12 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
         if(strand == 'f'){
 
             uint32_t score = (uint32_t)(curr_l * MIN_P_IDENT);
-            fprintf(out, "Frag,%"PRIu32",%"PRIu32",%"PRIu32",%"PRIu32",%c,0,%"PRIu32",%"PRIu32",%"PRIu32",80.00,80.00,0,0\n", xStart, yStart, xEnd, yEnd, strand, curr_l, score, score);
+            fprintf(out, "Frag,%" PRIu32",%" PRIu32",%" PRIu32",%" PRIu32",%c,0,%" PRIu32",%" PRIu32",%" PRIu32",80.00,80.00,0,0\n", xStart, yStart, xEnd, yEnd, strand, curr_l, score, score);
         }else{
             uint32_t best_yStart = ref_len - yStart - 1;
             uint32_t best_yEnd = ref_len - yEnd - 1;
             uint32_t score = (uint32_t)(curr_l * MIN_P_IDENT);
-            fprintf(out, "Frag,%"PRIu32",%"PRIu32",%"PRIu32",%"PRIu32",%c,0,%"PRIu32",%"PRIu32",%"PRIu32",80.00,80.00,0,0\n", xStart, best_yStart, xEnd, best_yEnd, strand, curr_l, score, score);
+            fprintf(out, "Frag,%" PRIu32",%" PRIu32",%" PRIu32",%" PRIu32",%c,0,%" PRIu32",%" PRIu32",%" PRIu32",80.00,80.00,0,0\n", xStart, best_yStart, xEnd, best_yEnd, strand, curr_l, score, score);
 
         }
         ++written_frags;
@@ -58,13 +58,13 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
     while(current + 1 < n_frags){
 
         build_frag(&next_xStart, &next_xEnd, &next_yStart, &next_yEnd, &next_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, current+1);
-        //fprintf(stdout, "Looking for [%"PRIu64"]: Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64", his hit [%"PRIu64", %"PRIu64"]\n", current+1, next_xStart, next_yStart, next_xEnd, next_yEnd, strand, next_l, filtered_hits_x[current+1], filtered_hits_y[current+1]);
+        //fprintf(stdout, "Looking for [%" PRIu64"]: Frag,%" PRIu64",%" PRIu64",%" PRIu64",%" PRIu64",%c,0,%" PRIu64", his hit [%" PRIu64", %" PRIu64"]\n", current+1, next_xStart, next_yStart, next_xEnd, next_yEnd, strand, next_l, filtered_hits_x[current+1], filtered_hits_y[current+1]);
 
         /*
         if(strand == 'r'){
             next_yStart = ref_len - next_yStart - 1;
             next_yEnd = ref_len - next_yEnd - 1;
-            fprintf(out, "Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64",75,75,0.75,0.75,0,0\n", next_xStart, next_yStart, next_xEnd, next_yEnd, strand, next_l);
+            fprintf(out, "Frag,%" PRIu64",%" PRIu64",%" PRIu64",%" PRIu64",%c,0,%" PRIu64",75,75,0.75,0.75,0,0\n", next_xStart, next_yStart, next_xEnd, next_yEnd, strand, next_l);
         }
         */
 
@@ -89,7 +89,7 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
 
             }else{
 
-                //fprintf(stdout, "Not overlapping or different diag now so lets go save [%"PRIu64"]\n", max_id);
+                //fprintf(stdout, "Not overlapping or different diag now so lets go save [%" PRIu64"]\n", max_id);
 
                 uint32_t best_xStart, best_xEnd, best_yStart, best_yEnd, best_l;
 
@@ -99,7 +99,7 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
                     
                     // Type,xStart,yStart,xEnd,yEnd,strand(f/r),block,length,score,ident,similarity,%%ident,SeqX,SeqY
                     uint32_t score = (uint32_t)(best_l * MIN_P_IDENT);
-                    fprintf(out, "Frag,%"PRIu32",%"PRIu32",%"PRIu32",%"PRIu32",%c,0,%"PRIu32",%"PRIu32",%"PRIu32",80.00,80.00,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l, score, score);
+                    fprintf(out, "Frag,%" PRIu32",%" PRIu32",%" PRIu32",%" PRIu32",%c,0,%" PRIu32",%" PRIu32",%" PRIu32",80.00,80.00,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l, score, score);
                     ++written_frags;
                 }
                 max_id = current+1;
@@ -108,7 +108,7 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
 
                 
                 build_frag(&xStart, &xEnd, &yStart, &yEnd, &curr_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, max_id);
-                //fprintf(stdout, "I am [%"PRIu64"]: Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64", his hit [%"PRIu64", %"PRIu64"]\n", max_id, xStart, yStart, xEnd, yEnd, strand, curr_l, filtered_hits_x[max_id], filtered_hits_y[max_id]);
+                //fprintf(stdout, "I am [%" PRIu64"]: Frag,%" PRIu64",%" PRIu64",%" PRIu64",%" PRIu64",%c,0,%" PRIu64", his hit [%" PRIu64", %" PRIu64"]\n", max_id, xStart, yStart, xEnd, yEnd, strand, curr_l, filtered_hits_x[max_id], filtered_hits_y[max_id]);
 
             }
         }
@@ -133,7 +133,7 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
             }else{
 
 
-                //fprintf(stdout, "Not overlapping or different diag now so lets go save [%"PRIu64"]\n", max_id);
+                //fprintf(stdout, "Not overlapping or different diag now so lets go save [%" PRIu64"]\n", max_id);
 
                 uint32_t best_xStart, best_xEnd, best_yStart, best_yEnd, best_l;
 
@@ -144,7 +144,7 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
                     best_yStart = ref_len - best_yStart - 1;
                     best_yEnd = ref_len - best_yEnd - 1;
                     uint32_t score = (uint32_t)(best_l * MIN_P_IDENT);
-                    fprintf(out, "Frag,%"PRIu32",%"PRIu32",%"PRIu32",%"PRIu32",%c,0,%"PRIu32",%"PRIu32",%"PRIu32",80.00,80.00,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l, score, score);
+                    fprintf(out, "Frag,%" PRIu32",%" PRIu32",%" PRIu32",%" PRIu32",%c,0,%" PRIu32",%" PRIu32",%" PRIu32",80.00,80.00,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l, score, score);
                     ++written_frags;
                     
                 }
@@ -152,7 +152,7 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
                 last_unwritten = 0;
 
                 build_frag(&xStart, &xEnd, &yStart, &yEnd, &curr_l, strand, filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, max_id);
-                //fprintf(stdout, "I am [%"PRIu64"]: Frag,%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%c,0,%"PRIu64", his hit [%"PRIu64", %"PRIu64"]\n", max_id, xStart, yStart, xEnd, yEnd, strand, curr_l, filtered_hits_x[max_id], filtered_hits_y[max_id]);
+                //fprintf(stdout, "I am [%" PRIu64"]: Frag,%" PRIu64",%" PRIu64",%" PRIu64",%" PRIu64",%c,0,%" PRIu64", his hit [%" PRIu64", %" PRIu64"]\n", max_id, xStart, yStart, xEnd, yEnd, strand, curr_l, filtered_hits_x[max_id], filtered_hits_y[max_id]);
             }
         }
 
@@ -170,7 +170,7 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
             if((best_xEnd - best_xStart) >= min_length){
 
                 uint32_t score = (uint32_t)(best_l * MIN_P_IDENT);
-                fprintf(out, "Frag,%"PRIu32",%"PRIu32",%"PRIu32",%"PRIu32",%c,0,%"PRIu32",%"PRIu32",%"PRIu32",80.00,80.00,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l, score, score);
+                fprintf(out, "Frag,%" PRIu32",%" PRIu32",%" PRIu32",%" PRIu32",%c,0,%" PRIu32",%" PRIu32",%" PRIu32",80.00,80.00,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l, score, score);
                 ++written_frags;
             }
 
@@ -186,7 +186,7 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
                 best_yStart = ref_len - best_yStart - 1;
                 best_yEnd = ref_len - best_yEnd - 1;
                 uint32_t score = (uint32_t)(best_l * MIN_P_IDENT);
-                fprintf(out, "Frag,%"PRIu32",%"PRIu32",%"PRIu32",%"PRIu32",%c,0,%"PRIu32",%"PRIu32",%"PRIu32",80.00,80.00,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l, score, score);
+                fprintf(out, "Frag,%" PRIu32",%" PRIu32",%" PRIu32",%" PRIu32",%c,0,%" PRIu32",%" PRIu32",%" PRIu32",80.00,80.00,0,0\n", best_xStart, best_yStart, best_xEnd, best_yEnd, strand, best_l, score, score);
                 ++written_frags;
 
             }
@@ -195,7 +195,7 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
     }
 
 
-    fprintf(stdout, "[INFO] Remaining frags %"PRIu32" out of %"PRIu32" on strand %c\n", written_frags, n_frags, strand);
+    fprintf(stdout, "[INFO] Remaining frags %" PRIu32" out of %" PRIu32" on strand %c\n", written_frags, n_frags, strand);
     
 
 }
@@ -234,14 +234,14 @@ uint32_t generate_hits_fast(uint32_t max_hits, uint64_t * diagonals, Hit * hits,
             // This is good enough for sequences length up to 2,147,483,648 bp 
             diagonals[n_hits_found] =  ((diff_offset + (uint64_t) values_x[id_x]) - (uint64_t) values_y[id_y]) * diag_len + (diff_offset + (uint64_t) values_x[id_x]);
 
-            //printf("Matching hash %"PRIu64" with %"PRIu64" @ (%"PRIu64", %"PRIu64")\n", keys_x[id_x], keys_y[id_y], values_x[id_x], values_y[id_y]);
+            //printf("Matching hash %" PRIu64" with %" PRIu64" @ (%" PRIu64", %" PRIu64")\n", keys_x[id_x], keys_y[id_y], values_x[id_x], values_y[id_y]);
 
             ++n_hits_found;
             if(n_hits_found == max_hits){ fprintf(stderr, "Reached maximum limit of hits\n"); }
 
             ++id_y;
 
-            //printf("next comp is %"PRIu64" with %"PRIu64"\n", keys_x[id_x], keys_y[id_y]);
+            //printf("next comp is %" PRIu64" with %" PRIu64"\n", keys_x[id_x], keys_y[id_y]);
         }
         else if(keys_x[id_x] < keys_y[id_y]){
             // Hits are lost if the same hashes are on both dictionaries repeated
@@ -255,7 +255,7 @@ uint32_t generate_hits_fast(uint32_t max_hits, uint64_t * diagonals, Hit * hits,
         }
     }
 
-    //printf("Generated %"PRIu64" hits \n", n_hits_found);
+    //printf("Generated %" PRIu64" hits \n", n_hits_found);
     return n_hits_found;
 
 }
@@ -295,17 +295,17 @@ uint32_t generate_hits_quadratic(uint32_t words_at_once, uint64_t * diagonals, H
                 // This is good enough for sequences length up to 2,147,483,648 bp 
                 diagonals[n_hits_found] =  ((diff_offset + (uint64_t) values_x[id_x]) - (uint64_t) values_y[id_y]) * diag_len + (diff_offset + (uint64_t) values_x[id_x]);
 
-                //printf("Matching hash %"PRIu64" with %"PRIu64" @ (%"PRIu64", %"PRIu64")\n", keys_x[id_x], keys_y[id_y], values_x[id_x], values_y[id_y]);
+                //printf("Matching hash %" PRIu64" with %" PRIu64" @ (%" PRIu64", %" PRIu64")\n", keys_x[id_x], keys_y[id_y], values_x[id_x], values_y[id_y]);
 
                 ++n_hits_found;
                 if(n_hits_found == words_at_once){ fprintf(stderr, "Reached maximum limit of hits\n"); }
 
-                //printf("next comp is %"PRIu64" with %"PRIu64"\n", keys_x[id_x], keys_y[id_y]);
+                //printf("next comp is %" PRIu64" with %" PRIu64"\n", keys_x[id_x], keys_y[id_y]);
             }
         }
     }
 
-    //printf("Generated %"PRIu64" hits \n", n_hits_found);
+    //printf("Generated %" PRIu64" hits \n", n_hits_found);
     return n_hits_found;
 
 }
@@ -350,7 +350,7 @@ uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * 
                 ++n_hits_found;
                 ++current_hits;
                 if(current_hits == max_frequency) break;
-                if(n_hits_found == max_hits){ fprintf(stderr, "Reached maximum limit of hits (max %"PRIu64")\n", n_hits_found); }
+                if(n_hits_found == max_hits){ fprintf(stderr, "Reached maximum limit of hits (max %" PRIu64")\n", n_hits_found); }
 
             }
 
@@ -368,7 +368,7 @@ uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * 
     }
 
 
-    //printf("Generated %"PRIu64" hits \n", n_hits_found);
+    //printf("Generated %" PRIu64" hits \n", n_hits_found);
     return n_hits_found;
 
 }
@@ -599,8 +599,8 @@ void print_kmers_to_file(uint64_t * keys, uint64_t * values, uint64_t table_size
     for(i=0;i<table_size;i++){
         perfect_hash_to_word(word, keys[i], KMER_SIZE);
         word[KMER_SIZE] = '\0';
-        fprintf(fout, "#%"PRIu64", %s\n", i, word);
-        fprintf(fout, "#%"PRIu64", %"PRIu64" at %" PRIu64"\n", i, keys[i], values[i]);
+        fprintf(fout, "#%" PRIu64", %s\n", i, word);
+        fprintf(fout, "#%" PRIu64", %" PRIu64" at %"  PRIu64"\n", i, keys[i], values[i]);
     } 
     fclose(fout);
 }

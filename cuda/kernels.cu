@@ -519,7 +519,7 @@ __global__ void kernel_register_fast_hash_rotational(uint64_t * hashes, uint64_t
 	*/
 	
 	
-	//printf("PREV at %"PRIu64" -> %.32s\n", 0, &sequence[0]);
+	//printf("PREV at %" PRIu64" -> %.32s\n", 0, &sequence[0]);
 	
 	//table[threadIdx.x + 32*i + 192 * blockIdx.x] = hash & bad;
 	hashes[threadIdx.x + 128 * blockIdx.x] = hash & bad;
@@ -563,7 +563,7 @@ __global__ void kernel_register_fast_hash_rotational(uint64_t * hashes, uint64_t
 		
 	}
 
-	//if(threadIdx.x == 0 && blockIdx.x == 0) printf("POST at %"PRIu64" -> %.32s @ %"PRIu64"\n", threadIdx.x + (32) + 128 * blockIdx.x, &sequence[threadIdx.x + (32) + 128 * blockIdx.x], hashes[threadIdx.x + (32) + 128 * blockIdx.x]);
+	//if(threadIdx.x == 0 && blockIdx.x == 0) printf("POST at %" PRIu64" -> %.32s @ %" PRIu64"\n", threadIdx.x + (32) + 128 * blockIdx.x, &sequence[threadIdx.x + (32) + 128 * blockIdx.x], hashes[threadIdx.x + (32) + 128 * blockIdx.x]);
 	
 }
 
