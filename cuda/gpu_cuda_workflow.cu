@@ -19,6 +19,7 @@ uint64_t memory_allocation_chooser(uint64_t total_memory);
 
 int main(int argc, char ** argv)
 {
+    clock_t start = clock(), end;
     uint32_t i, min_length = 64, max_frequency = 0, n_frags_per_block = 32;
     float factor = 0.125;
     int fast = 0; // sensitive is default
@@ -26,9 +27,6 @@ int main(int argc, char ** argv)
     FILE * query = NULL, * ref = NULL, * out = NULL;
     init_args(argc, argv, &query, &selected_device, &ref, &out, &min_length, &fast, &max_frequency, &factor, &n_frags_per_block);
 
-    clock_t start = clock();
-    /*Do something*/
-    clock_t end = clock();
 
     ////////////////////////////////////////////////////////////////////////////////
     // Get info of devices
@@ -67,8 +65,9 @@ int main(int argc, char ** argv)
     if( cudaSuccess != (ret = cudaGetDeviceProperties(&device, selected_device))){ fprintf(stderr, "Failed to get cuda device property: %d\n", ret); exit(-1); }
     global_device_RAM = device.totalGlobalMem;
 
-    
-
+   	end = clock(); 
+    fprintf(stdout, "[INFO] INIT 1 t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+	start = clock();
 
     // Calculate how much ram we can use for every chunk
     uint64_t effective_global_ram =  (global_device_RAM - memory_allocation_chooser(global_device_RAM)); //Minus 100 to 300 MBs for other stuff
@@ -270,7 +269,12 @@ int main(int argc, char ** argv)
     //printf("Starts %p Endings %p\n", ptr_reverse_write[1], ptr_reverse_write[1]+chunk_size);
     //printf("Starts %p Endings %p\n", ptr_reverse_write[2], ptr_reverse_write[2]+chunk_size);
     //printf("Starts %p Endings %p\n", ptr_reverse_write[3], ptr_reverse_write[3]+MIN(chunk_size, ref_len - chunk_size*(n_streams-1)));
-   
+  
+
+	end = clock();
+
+    fprintf(stdout, "[INFO] INIT 2 t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+	start = clock();
  
     threads_number = 128;
     //threads_number = 32;
@@ -367,6 +371,9 @@ int main(int argc, char ** argv)
 #ifdef SHOWTIME
     fprintf(stdout, "[INFO] rev comp t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
 #endif
+
+	start = clock();
+
     fprintf(stdout, "[INFO] Showing start of reference sequence:\n");
     
     fprintf(stdout, "\t(Begin ref)%.64s\n", ref_seq_host);
@@ -525,9 +532,15 @@ int main(int argc, char ** argv)
     // Read the query and reference in blocks
     ////////////////////////////////////////////////////////////////////////////////
 
+	end = clock();
+
+    fprintf(stdout, "[INFO] INIT 3 t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+
+
 
     int split = 0;
     uint32_t pos_in_query = 0, pos_in_ref = 0;
+
     while(pos_in_query < query_len){
 
 
@@ -660,11 +673,14 @@ int main(int argc, char ** argv)
         cub::DoubleBuffer<uint64_t> d_keys(ptr_keys, ptr_keys_buf);
         cub::DoubleBuffer<uint32_t> d_values(ptr_values, ptr_values_buf);
 
+
         void * d_temp_storage = NULL;
         size_t temp_storage_bytes = 0;
         cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys, d_values, items_read_x);
         ret = cudaDeviceSynchronize();
         if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (1). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+
+		fprintf(stdout, "[INFO] temp storage is %zu\n", temp_storage_bytes);
 
         // Allocate temporary storage
         ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
@@ -692,11 +708,13 @@ int main(int argc, char ** argv)
         //}
 
         ret = cudaFree(d_temp_storage);
+
+
         if(ret != cudaSuccess){ fprintf(stderr, "Bad free of temp storage (1): %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
         
         end = clock();
 #ifdef SHOWTIME
-        fprintf(stdout, "[INFO] sort words Q t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+        fprintf(stdout, "[INFO] sortwords Q t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
 #endif
 
         pos_in_query += words_at_once;
@@ -839,7 +857,7 @@ int main(int argc, char ** argv)
 
             end = clock();
 #ifdef SHOWTIME
-            fprintf(stdout, "[INFO] sort words R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+            fprintf(stdout, "[INFO] sortwords R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
 #endif
 
 
@@ -960,7 +978,7 @@ int main(int argc, char ** argv)
 
             end = clock();
 #ifdef SHOWTIME
-            fprintf(stdout, "[INFO] sort hits Q-R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+            fprintf(stdout, "[INFO] sorthits Q-R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
 #endif
 
             memset(filtered_hits_x, 0x0000, n_hits_found * sizeof(uint32_t));
@@ -972,7 +990,7 @@ int main(int argc, char ** argv)
 
             end = clock();
 #ifdef SHOWTIME
-            fprintf(stdout, "[INFO] filter hits Q-R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+            fprintf(stdout, "[INFO] filterhits Q-R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
 #endif
 
             fprintf(stdout, "[INFO] Remaining hits %"PRIu32"\n", n_hits_kept);
@@ -1051,7 +1069,6 @@ int main(int argc, char ** argv)
 
             if(number_of_blocks != 0)
             {
-                cudaProfilerStart();
                 kernel_frags_forward_register<<<number_of_blocks, threads_number>>>(ptr_device_filt_hits_x, ptr_device_filt_hits_y, ptr_left_offset, ptr_right_offset, ptr_seq_dev_mem, ptr_seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len), n_hits_kept, n_frags_per_block);
                 
                 //threads_number = 128;
@@ -1059,7 +1076,6 @@ int main(int argc, char ** argv)
                 //cudaProfilerStart();
                 //kernel_frags_forward_per_thread<<<number_of_blocks, threads_number>>>(ptr_device_filt_hits_x, ptr_device_filt_hits_y, ptr_left_offset, ptr_right_offset, ptr_seq_dev_mem, ptr_seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len), n_hits_kept);
                 ret = cudaDeviceSynchronize();
-                cudaProfilerStop();
                 
                 if(ret != cudaSuccess){ fprintf(stderr, "Failed on generating forward frags. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             }
@@ -1228,7 +1244,7 @@ int main(int argc, char ** argv)
 
             end = clock();
 #ifdef SHOWTIME
-            fprintf(stdout, "[INFO] sort words RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+            fprintf(stdout, "[INFO] sortwords RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
 #endif
 
             ////////////////////////////////////////////////////////////////////////////////
@@ -1324,7 +1340,7 @@ int main(int argc, char ** argv)
 
             end = clock();
 #ifdef SHOWTIME
-            fprintf(stdout, "[INFO] sorting hits Q-RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+            fprintf(stdout, "[INFO] sortinghits Q-RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
 #endif
 
 
@@ -1336,7 +1352,7 @@ int main(int argc, char ** argv)
 
             end = clock();
 #ifdef SHOWTIME
-            fprintf(stdout, "[INFO] filter hits Q-RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+            fprintf(stdout, "[INFO] filterhits Q-RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
 #endif
 
             fprintf(stdout, "[INFO] Remaining hits %"PRIu32"\n", n_hits_kept);
