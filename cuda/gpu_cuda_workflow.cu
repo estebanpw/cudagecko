@@ -4,7 +4,6 @@
 #include "cpu_functions.c"
 #include "cub/cub.cuh"
 #include <moderngpu/kernel_mergesort.hxx>
-
 #include <cuda_profiler_api.h>
 
 //#define DIMENSION 1000
@@ -27,6 +26,7 @@ int main(int argc, char ** argv)
     unsigned selected_device = 0;
     FILE * query = NULL, * ref = NULL, * out = NULL;
     init_args(argc, argv, &query, &selected_device, &ref, &out, &min_length, &fast, &max_frequency, &factor, &n_frags_per_block);
+
 
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -63,7 +63,6 @@ int main(int argc, char ** argv)
     if( cudaSuccess != (ret = cudaSetDevice(selected_device))){ fprintf(stderr, "Failed to get cuda device property: %d\n", ret); exit(-1); }
     fprintf(stdout, "[INFO] Using device %d\n", selected_device);
 
-    mgpu::standard_context_t context;
 
 
     if( cudaSuccess != (ret = cudaGetDeviceProperties(&device, selected_device))){ fprintf(stderr, "Failed to get cuda device property: %d\n", ret); exit(-1); }
@@ -94,8 +93,15 @@ int main(int argc, char ** argv)
 	uint32_t bytes_to_subtract = max_hits * (8+4);
 
 
+
+
     ret = cudaMalloc(&data_mem, (effective_global_ram - bytes_to_subtract) * sizeof(char)); 
     if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pool memory in device. Error: %d\n", ret); exit(-1); }
+
+
+	char * pre_alloc;
+	ret = cudaMalloc(&pre_alloc, (bytes_to_subtract) * sizeof(char));
+    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate auxiliary pool memory in device. Error: %d\n", ret); exit(-1); }
 
     fprintf(stdout, "[INFO] You can have %" PRIu64" MB for words (i.e. %" PRIu64" words), and %" PRIu64" MB for hits (i.e. %" PRIu64" hits)\n", 
         bytes_for_words / (1024*1024), words_at_once, (effective_global_ram - bytes_for_words) / (1024*1024), max_hits);
@@ -106,7 +112,14 @@ int main(int argc, char ** argv)
     else
         fprintf(stdout, "[INFO] Running on sensitive mode (ALL seeds are computed [mf:%" PRIu32"])\n", max_frequency);
 
-    
+   
+	// Allocate memory pool in GPU and pass it to moderngpu
+	Mem_pool mptr;
+	mptr.mem_ptr = pre_alloc;
+	mptr.address = 0;
+	mptr.limit = bytes_to_subtract;
+    mgpu::standard_context_t context(false, 0, &mptr);
+    //mgpu::standard_context_t context(false, 0, NULL);
 
     
     // Set working size
