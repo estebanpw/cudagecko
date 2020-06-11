@@ -140,6 +140,8 @@ int main(int argc, char ** argv)
     //uint32_t ref_len = get_seq_len(ref);
 
 
+	start = clock();
+
     // Load faster
     fseek(query, 0L, SEEK_END);
     uint32_t coarse_query_len = (uint32_t) ftell(query);
@@ -160,6 +162,11 @@ int main(int argc, char ** argv)
     uint32_t ref_len = from_ram_load(s_buffer, pro_r_buffer, coarse_ref_len);
 
     free(s_buffer);
+
+	end = clock();
+#ifdef SHOWTIME
+	uint64_t real_rev_time = (uint64_t) (end - start);
+#endif
 
 
     fprintf(stdout, "[INFO] Qlen: %" PRIu32"; Rlen: %" PRIu32"\n", query_len, ref_len);
@@ -198,6 +205,7 @@ int main(int argc, char ** argv)
     if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for pool. Error: %d\n", ret); exit(-1); }
     
 
+    start = clock();
     char * query_seq_host, * ref_seq_host, * ref_rev_seq_host;
     base_ptr_pinned = (char *) &host_pinned_mem[0];
     query_seq_host = (char *) &host_pinned_mem[0];
@@ -245,7 +253,6 @@ int main(int argc, char ** argv)
     memcpy(query_seq_host, pro_q_buffer, query_len);
     fprintf(stdout, "[INFO] Loading reference\n");
 
-    start = clock();
     //load_seq(ref, ref_seq_host);
     memcpy(ref_seq_host, pro_r_buffer, ref_len);
     fprintf(stdout, "[INFO] Reversing reference\n");
@@ -286,12 +293,6 @@ int main(int argc, char ** argv)
     //printf("Starts %p Endings %p\n", ptr_reverse_write[3], ptr_reverse_write[3]+MIN(chunk_size, ref_len - chunk_size*(n_streams-1)));
    
 
-	end = clock();
-#ifdef SHOWTIME
-    fprintf(stdout, "[INFO] INIT 2 t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
-#endif
-
-	start = clock();
  
     threads_number = 128;
     //threads_number = 32;
@@ -386,7 +387,7 @@ int main(int argc, char ** argv)
 
     // Print some info
 #ifdef SHOWTIME
-    fprintf(stdout, "[INFO] rev comp t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+    fprintf(stdout, "[INFO] rev comp t=%f\n", (float)((clock_t) real_rev_time + (end - start)) / CLOCKS_PER_SEC);
 #endif
 
 	start = clock();
