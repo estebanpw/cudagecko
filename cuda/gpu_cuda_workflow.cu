@@ -21,7 +21,7 @@ int main(int argc, char ** argv)
 {
     clock_t start = clock(), end;
     uint32_t i, min_length = 64, max_frequency = 0, n_frags_per_block = 32;
-    float factor = 0.125;
+    float factor = 0.15;
     int fast = 0; // sensitive is default
     unsigned selected_device = 0;
     FILE * query = NULL, * ref = NULL, * out = NULL;
@@ -624,10 +624,8 @@ int main(int argc, char ** argv)
 
         if(number_of_blocks != 0)
         {
-            //cudaProfilerStart();
             kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_query);
             //kernel_index_global32_advanced<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, (uchar4 *) ptr_seq_dev_mem, pos_in_query);
-            //cudaProfilerStop();
         
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on query. Error: %d\n", ret); exit(-1); }

@@ -576,23 +576,28 @@ __global__ void kernel_index_global32(uint64_t * hashes, uint32_t * positions, c
         char c = sequence[threadIdx.x + k + blockIdx.x * blockDim.x];
         // IF-binary
         
-		/*
+		/*	
         hash = hash << 2;
         if(c == 'A') hash += 0;
         if(c == 'C') hash += 1;
         if(c == 'G') hash += 2;
         if(c == 'T') hash += 3;
         if(c == 'N') bad = 0;
-        */
+		*/
+       
+	
 		
         // IF-cached
+		
         if(c == 'C') hash += pow4[k];
         if(c == 'G') hash += pow4_G[k];
         if(c == 'T') hash += pow4_T[k];
         if(c == 'N') bad = 0;
 		
-       	/* 
+
+       	 
         // Pure arithmetic
+		/*
         hash = hash << 2;
         hash += (c & 6) >> 1;
         if(c == 'N') bad = 0;
