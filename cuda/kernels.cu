@@ -48,7 +48,7 @@ __device__ void left_extend(int32_t warp_pos_x_left, int32_t warp_pos_y_left, ui
 		char v_y = seq_y[thre_pos_y];
 
 		cell_score = (v_x == v_y);
-		//(v_x == 'N' || v_y == 'N') ? (cell_score = 0) : (0);
+		if(v_x == 'N' || v_y == 'N') cell_score = 0;
 
 		for (int offset = 16; offset > 0; offset = offset >> 1)
 			cell_score += __shfl_down_sync(0xFFFFFFFF, cell_score, offset);
@@ -81,6 +81,7 @@ __device__ void right_extend(int32_t warp_pos_x_right, int32_t warp_pos_y_right,
 
 		int cell_score = (v_x == v_y);
 		//(v_x == 'N' || v_y == 'N') ? (cell_score = 0) : (0);
+		if(v_x == 'N' || v_y == 'N') cell_score = 0;
 
 		for (int offset = 16; offset > 0; offset = offset >> 1)
 			cell_score += __shfl_down_sync(0xFFFFFFFF, cell_score, offset);

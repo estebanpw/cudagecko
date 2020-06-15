@@ -19,7 +19,7 @@ uint64_t memory_allocation_chooser(uint64_t total_memory);
 
 int main(int argc, char ** argv)
 {
-    clock_t start = clock(), end;
+    clock_t start = clock(), end = clock();
     uint32_t i, min_length = 64, max_frequency = 0, n_frags_per_block = 32;
     float factor = 0.15;
     int fast = 0; // sensitive is default
