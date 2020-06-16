@@ -118,7 +118,7 @@ char * reverse_complement_sequence(char * s, uint64_t l)
 
 }
 
-void get_alignments(char * s_x, char * s_y, char * r_y, uint64_t l_fastax, uint64_t l_fastay, std::vector<uint64_t> * index_x, std::vector<uint64_t> * index_y, std::vector<uint64_t> * index_r, FILE * csv)
+void get_alignments(char * s_x, char * s_y, char * r_y, uint64_t l_fastax, uint64_t l_fastay, std::vector<uint64_t> * index_x, std::vector<uint64_t> * index_y, std::vector<uint64_t> * index_r, FILE * csv, uint32_t min_len)
 {
 
 	uint64_t i = 0;
@@ -140,6 +140,8 @@ void get_alignments(char * s_x, char * s_y, char * r_y, uint64_t l_fastax, uint6
 		for(i=0; i<t; i++) if(buff[i] == ',') buff[i] = ' ';
 
 		sscanf(buff, "%*s %lu %lu %lu %lu %c %*u %lu %*u %*u %*f %*f %*u %*u", &xstart, &ystart, &xend, &yend, &strand, &len);
+
+		if(len < min_len) continue;
 
 		if(strand == 'f')
 		{

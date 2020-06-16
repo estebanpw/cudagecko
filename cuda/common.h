@@ -36,6 +36,6 @@ uint32_t get_seq_len(FILE * f);
 
 char * reverse_complement_sequence(char * s, uint64_t l);
 
-void get_alignments(char * s_x, char * s_y, char * r_y, uint64_t l_fastax, uint64_t l_fastay, std::vector<uint64_t> * index_x, std::vector<uint64_t> * index_y, std::vector<uint64_t> * index_r, FILE * csv);
+void get_alignments(char * s_x, char * s_y, char * r_y, uint64_t l_fastax, uint64_t l_fastay, std::vector<uint64_t> * index_x, std::vector<uint64_t> * index_y, std::vector<uint64_t> * index_r, FILE * csv, uint32_t min_len);
 
 uint64_t search(uint64_t value, std::vector<uint64_t> * a, uint64_t l, uint64_t * pos);

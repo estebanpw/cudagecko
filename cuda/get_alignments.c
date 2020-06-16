@@ -3,8 +3,8 @@
 int main(int argc, char ** av){
    
     // Check parameters 
-    if(argc != 4) {
-        fprintf(stderr, "USE: get_alignments csv fasta_x fasta_y\n"); 
+    if(argc < 4) {
+        fprintf(stderr, "USE: get_alignments csv fasta_x fasta_y [min align length]\n"); 
         exit(-1);
     }
     
@@ -18,6 +18,9 @@ int main(int argc, char ** av){
 
 	FILE * fastay = NULL;
 	fastay = fopen(av[3], "rt"); if(fastay == NULL) { fprintf(stderr, "Could not open input fasta Y file\n"); exit(-1);}
+
+	uint32_t min_len = 0;
+	if(argc == 5) min_len = (uint32_t) atoi(av[4]);
 
     // Load sequence
     uint32_t l_fastax, l_fastay;
@@ -54,7 +57,7 @@ int main(int argc, char ** av){
 	*/
 
 	// Get alignments
-	get_alignments(s_x, s_y, r_y, l_fastax, l_fastay, &index_x, &index_y, &index_r, csv);
+	get_alignments(s_x, s_y, r_y, l_fastax, l_fastay, &index_x, &index_y, &index_r, csv, min_len);
 	
 
 	free(s_x);
