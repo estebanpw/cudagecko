@@ -33,7 +33,10 @@ do
 done
 
 total=`expr $x \* $y`
+total=`expr $total - 1` # Minus one because it starts on zero
 curr=0
+
+echo "" > details
 
 for ((i=0 ; i < ${#array[@]} ; i++))
 do
@@ -41,9 +44,9 @@ do
     do
                 seqX=${array[$i]}
                 seqY=${array2[$j]}
-                echo "[GPU $DEV] ($curr/$total): ${seqX}-${seqY}"
-                { time $BINDIR/gpu_cuda_workflow -query $DIR/${seqX} -ref $DIR2/${seqY} -dev $DEV -len $LEN > /dev/null 2> errors; } 2>&1 | grep "real" | awk '{print $2}'
-                cat errors
+                echo "[GPU $DEV] ($curr/$total): ${seqX}-${seqY}" >> details
+                /usr/bin/time -f "%e" $BINDIR/gpu_cuda_workflow -query $DIR/${seqX} -ref $DIR2/${seqY} -dev $DEV -len $LEN > /dev/null 2>> details
+                cat details
                 curr=`expr $curr + 1`
     done
 done
