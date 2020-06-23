@@ -311,8 +311,10 @@ uint32_t generate_hits_quadratic(uint32_t words_at_once, uint64_t * diagonals, H
 }
 
 
+
+
 uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
-    uint64_t * keys_y, uint32_t * values_x, uint32_t * values_y, uint32_t items_x, uint32_t items_y, uint32_t query_len, uint32_t ref_len, uint32_t max_frequency){
+    uint64_t * keys_y, uint32_t * values_x, uint32_t * values_y, uint32_t items_x, uint32_t items_y, uint32_t query_len, uint32_t ref_len, uint32_t max_frequency, int fast){
 
     // Nota: para generar TODOS los hits hay que tener en cuenta que si hay hits repetidos en
     // ambos diccionarios se debe volver atrás cuando se encuentra uno distinto
@@ -335,10 +337,13 @@ uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * 
         
         if(keys_x[id_x] == keys_y[id_y] && values_x[id_x] != 0xFFFFFFFF && values_y[id_y] != 0xFFFFFFFF) {
 
+		uint64_t step_x = 1, step_y = 1;
+		if(fast > 0) find_consecutive_seeds(id_x, id_y, keys_x, keys_y, values_x, values_y, items_x, items_y, &step_x, &step_y);
+
 
             uint64_t curr_id_y;
 
-            for(curr_id_y = id_y; curr_id_y < items_y; curr_id_y++){
+            for(curr_id_y = id_y; curr_id_y < items_y; curr_id_y += step_y){
 
                 if(keys_x[id_x] != keys_y[curr_id_y] || values_x[id_x] == 0xFFFFFFFF || values_y[curr_id_y] == 0xFFFFFFFF) break;
 
@@ -354,7 +359,7 @@ uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * 
 
             }
 
-            ++id_x;
+            id_x += step_x;
             current_hits = 0;
             
         }
@@ -496,6 +501,7 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
             fprintf(stdout, "                       such as human and gorilla chromosomes require a smaller fractions because of the\n");
             fprintf(stdout, "                       huge number of hits that are generated)\n");
             fprintf(stdout, "           --fast      Runs in fast mode as opposed to sensitive (default)\n");
+			fprintf(stdout, "           --hyperfast Runs in hyper fast mode \n");
             fprintf(stdout, "           --help      Shows help for program usage\n");
             fprintf(stdout, "\n");
             exit(1);
@@ -536,6 +542,10 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
 
         if(strcmp(av[pNum], "--fast") == 0){
             *fast = 1;
+        }
+
+        if(strcmp(av[pNum], "--hyperfast") == 0){
+            *fast = 2;
         }
 
         if(strcmp(av[pNum], "-max_freq") == 0){
@@ -733,3 +743,62 @@ uint64_t realign_address(uint64_t address, uint64_t align)
     return address + align - (address % align);
 
 }
+
+void find_consecutive_seeds(uint64_t i, uint64_t j, uint64_t * keys_x, uint64_t * keys_y, uint32_t * values_x, uint32_t * values_y, uint32_t items_x, uint32_t items_y, uint64_t * step_x, uint64_t * step_y)
+{
+	uint64_t i_cons = i + 1, j_cons = j + 1;
+
+	while(i_cons < items_x)
+	{
+
+		if(keys_x[i_cons] != keys_x[i] || keys_x[i_cons] == 0xFFFFFFFFFFFFFFFF) break;
+		++i_cons;
+
+	}
+
+	while(j_cons < items_y)
+	{
+
+		if(keys_y[j_cons] != keys_y[j] || keys_y[j_cons] == 0xFFFFFFFFFFFFFFFF) break;
+		++j_cons;
+
+	}
+
+	// This is for uniform mode with fixed factor
+
+	/*
+
+	*step_x = (i_cons - i) / 10;
+	*step_y = (j_cons - j) / 10;
+	
+	*/
+
+	// This is for uniform mode relative to the number of seeds
+	// This is MAX / MIN = RATIO; where MIN is the step in Y and RATIO is the step in X
+
+	uint64_t xn = (i_cons - i);
+	uint64_t yn = (j_cons - j);
+
+	*step_x = sqrt(xn);
+	*step_y = sqrt(yn);
+
+	// This is the same but reducing some numbers
+
+	*step_x = *step_x * 2;
+	*step_y = *step_y * 2;
+
+
+	if(*step_x == 0) *step_x = 1;
+	if(*step_y == 0) *step_y = 1;
+
+
+
+}
+
+
+
+
+
+
+
+

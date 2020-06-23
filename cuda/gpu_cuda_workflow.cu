@@ -86,7 +86,9 @@ int main(int argc, char ** argv)
 
     // One workload depends on number of words (words + sortwords + generate hits)
     // The other one depends on number of hits (sort hits + filterhits + frags)
-    if(fast == 1) factor = 0.5;
+
+    if(fast == 2) factor = 0.45;
+	else if(fast == 1) factor = 0.45;
     uint64_t bytes_for_words = (factor * effective_global_ram); // 512 MB for words
     uint64_t words_at_once = bytes_for_words / (8+8+4+4); 
     uint64_t max_hits = (effective_global_ram - bytes_for_words) / (8+8+4+4); // The rest for allocating hits
@@ -109,6 +111,8 @@ int main(int argc, char ** argv)
     fprintf(stdout, "[INFO] Filtering at a minimum length of %" PRIu32" bps\n", min_length);
     if(fast == 1) 
         fprintf(stdout, "[INFO] Running on fast mode (some repetitive seeds will be skipped)\n");
+	else if(fast == 2)
+		fprintf(stdout, "[INFO] Running on hyper fast mode (some repetitive seeds will be skipped)\n");
     else
         fprintf(stdout, "[INFO] Running on sensitive mode (ALL seeds are computed [mf:%" PRIu32"])\n", max_frequency);
 
@@ -900,10 +904,10 @@ int main(int argc, char ** argv)
             start = clock();
 
             uint32_t n_hits_found;
-            if(fast == 1)
+            if(fast == 2)
                 n_hits_found = generate_hits_fast(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             else
-                n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency);
+                n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency, fast);
             
 
             end = clock();
@@ -1292,10 +1296,10 @@ int main(int argc, char ** argv)
             start = clock();
 
             uint32_t n_hits_found;
-            if(fast == 1)
+            if(fast == 2)
                 n_hits_found = generate_hits_fast(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             else
-                n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency);
+                n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency, fast);
             
             end = clock();
 #ifdef SHOWTIME

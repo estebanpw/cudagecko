@@ -159,7 +159,7 @@ void get_alignments(char * s_x, char * s_y, char * r_y, uint64_t l_fastax, uint6
 		fprintf(stdout, "%.*s\n", (int) len, up);
 		for(i=0; i<len; i++)
 		{
-			if(up[i] == bottom[i])
+			if(up[i] == bottom[i] && up[i] != 'N')
 			{
 				fprintf(stdout, "|");
 				++idents;
