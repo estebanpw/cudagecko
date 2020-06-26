@@ -11,7 +11,7 @@
 #define CORES_PER_COMPUTE_UNIT 32
 #define KMER_SIZE 32
 #define MIN_P_IDENT 0.8 // THIS MUST BE CHANGED IN KERNELS.CU as well
-#define OUTPUT_P_IDENT 75.00
+#define OUTPUT_P_IDENT 80.00
 
 // Warning: Does not prevent double evaluation
 #define MIN(a,b) (((a)<(b))?(a):(b))
