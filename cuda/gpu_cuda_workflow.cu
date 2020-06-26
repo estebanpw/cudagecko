@@ -623,17 +623,21 @@ int main(int argc, char ** argv)
 
 
     
-        number_of_blocks = (items_read_x - KMER_SIZE + 1)/(64);
+        number_of_blocks = (items_read_x - KMER_SIZE + 1)/(64) + 1;
 
 
         if(number_of_blocks != 0)
         {
-            kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_query);
+            kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_query, items_read_x);
             //kernel_index_global32_advanced<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, (uchar4 *) ptr_seq_dev_mem, pos_in_query);
         
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on query. Error: %d\n", ret); exit(-1); }
         }
+		else
+		{
+			fprintf(stdout, "[WARNING] Zero blocks for query words\n");
+		}
 
         //cudaFree(seq_dev_mem);
         //cudaFree(data_mem);
@@ -795,11 +799,11 @@ int main(int argc, char ** argv)
             //number_of_blocks = (((items_read_y - KMER_SIZE + 1)) / (threads_number*4)); 
             //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
             
-            number_of_blocks = ((items_read_y - KMER_SIZE + 1))/(64);
+            number_of_blocks = ((items_read_y - KMER_SIZE + 1))/(64) + 1;
             if(number_of_blocks != 0)
             {
 
-                kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref);
+                kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref, items_read_y);
             
                 //number_of_blocks = ((items_read_y - KMER_SIZE + 1))/threads_number;
                 //kernel_index_global32<<<number_of_blocks, threads_number>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref);
@@ -807,6 +811,10 @@ int main(int argc, char ** argv)
                 if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on ref. Error: %d\n", ret); exit(-1); }
 
             }
+			else
+			{
+				fprintf(stdout, "[WARNING] Zero blocks for ref words\n");
+			}
 
             end = clock();
 #ifdef SHOWTIME
@@ -1030,7 +1038,6 @@ int main(int argc, char ** argv)
                 //printf("%" PRIu64"\n", diagonals[i]);
                 //fprintf(stdout, "Frag,%" PRIu32",%" PRIu32",%" PRIu32",%" PRIu32",f,0,32,32,32,1.0,1.0,0,0\n", filtered_hits_x[i], filtered_hits_y[i], filtered_hits_x[i]+32, filtered_hits_y[i]+32);
             //}
-            
             //ret = cudaFree(d_temp_storage);
             //ret = cudaFree(device_hits);
             //ret = cudaFree(device_diagonals);
@@ -1199,11 +1206,11 @@ int main(int argc, char ** argv)
             //number_of_blocks = (((items_read_y - KMER_SIZE + 1)) / (threads_number*4)); 
             //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
             
-            number_of_blocks = ((items_read_y - KMER_SIZE + 1))/64;
+            number_of_blocks = ((items_read_y - KMER_SIZE + 1))/64 + 1;
 
             if(number_of_blocks != 0)
             {
-                kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref);
+                kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref, items_read_y);
                 
                 //number_of_blocks = ((items_read_y - KMER_SIZE + 1))/threads_number;
                 //kernel_index_global32<<<number_of_blocks, threads_number>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref);

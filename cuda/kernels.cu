@@ -28,7 +28,7 @@ __device__ void left_extend(int32_t warp_pos_x_left, int32_t warp_pos_y_left, ui
 
 	int32_t hp1 = warp_pos_x_left;
 	*best_offset_left = (uint32_t) warp_pos_x_left;
-	int32_t score = 32, best_score = 32, total_idents = 16; // Half of the hit for each side
+	int32_t score = 32, best_score = 32, total_idents = 32; // Half of the hit for each side
 	int p_ident = 100;
 	int cell_score;
 	int32_t thre_pos_x = warp_pos_x_left + threadIdx.x - (int32_t) x_seq_off;
@@ -58,7 +58,7 @@ __device__ void left_extend(int32_t warp_pos_x_left, int32_t warp_pos_y_left, ui
 		score = score + (int32_t) idents;
 		total_idents += (int32_t) idents;
 		score = score - (int32_t) (32 - idents);
-		p_ident = ((100 * total_idents) / (int) (hp1 - warp_pos_x_left + 16));
+		p_ident = ((100 * total_idents) / (int) (hp1 - warp_pos_x_left + 32));
 		if(score > best_score && p_ident >= MIN_P_IDENT){ best_score = score; *best_offset_left = warp_pos_x_left; }
 
 	}
@@ -70,7 +70,7 @@ __device__ void right_extend(int32_t warp_pos_x_right, int32_t warp_pos_y_right,
 	int32_t thre_pos_x = warp_pos_x_right + threadIdx.x - (int32_t) x_seq_off;
 	int32_t thre_pos_y = warp_pos_y_right + threadIdx.x - (int32_t) y_seq_off;
 	int32_t score = 32;
-	int32_t total_idents = 16;
+	int32_t total_idents = 32;
 	int32_t best_score = 32;
 	int p_ident = 100;
 
@@ -90,7 +90,7 @@ __device__ void right_extend(int32_t warp_pos_x_right, int32_t warp_pos_y_right,
 		score = score + (int32_t) idents;
 		total_idents += (int32_t) idents;
 		score = score - (int32_t) (32 - idents);
-		p_ident = (int) ((100 * total_idents) / (int32_t) (warp_pos_x_right - (hp1) + 16));
+		p_ident = (int) ((100 * total_idents) / (int32_t) (warp_pos_x_right - (hp1) + 32));
 
 		warp_pos_x_right += 32;
 		warp_pos_y_right += 32;
@@ -568,10 +568,13 @@ __global__ void kernel_register_fast_hash_rotational(uint64_t * hashes, uint64_t
 }
 
 
-__global__ void kernel_index_global32(uint64_t * hashes, uint32_t * positions, const char * sequence, uint32_t offset) {
+__global__ void kernel_index_global32(uint64_t * hashes, uint32_t * positions, const char * sequence, uint32_t offset, uint32_t seq_lim) {
 
     uint64_t hash = 0, k = 0;
     uint64_t bad = 0xFFFFFFFFFFFFFFFF;
+	
+	if(threadIdx.x + 32 + blockIdx.x * blockDim.x > seq_lim) return;
+
     for(k=0; k<32; k++){
         char c = sequence[threadIdx.x + k + blockIdx.x * blockDim.x];
         // IF-binary
