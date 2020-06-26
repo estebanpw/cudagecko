@@ -1028,7 +1028,7 @@ int main(int argc, char ** argv)
 
             //for(i=0; i<n_hits_kept; i++){
                 //printf("%" PRIu64"\n", diagonals[i]);
-                //fprintf(out, "Frag,%" PRIu64",%" PRIu64",%" PRIu64",%" PRIu64",f,0,32,32,32,1.0,1.0,0,0\n", filtered_hits_x[i], filtered_hits_y[i], filtered_hits_x[i]+32, filtered_hits_y[i]+32);
+                //fprintf(stdout, "Frag,%" PRIu32",%" PRIu32",%" PRIu32",%" PRIu32",f,0,32,32,32,1.0,1.0,0,0\n", filtered_hits_x[i], filtered_hits_y[i], filtered_hits_x[i]+32, filtered_hits_y[i]+32);
             //}
             
             //ret = cudaFree(d_temp_storage);
@@ -1094,18 +1094,15 @@ int main(int argc, char ** argv)
             //    printf(" \t\t y: %.32s %" PRIu64"\n", &ref_seq_host[filtered_hits_y[i]], filtered_hits_y[i]);
             //}
 
-            //number_of_blocks = n_hits_kept; 
 			number_of_blocks = (n_hits_kept / n_frags_per_block) + 1;
-            //number_of_blocks = 20; // REMOVE !!
+
+
+
 
             if(number_of_blocks != 0)
             {
-                kernel_frags_forward_register<<<number_of_blocks, threads_number>>>(ptr_device_filt_hits_x, ptr_device_filt_hits_y, ptr_left_offset, ptr_right_offset, ptr_seq_dev_mem, ptr_seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len), n_hits_kept, n_frags_per_block);
+               kernel_frags_forward_register<<<number_of_blocks, threads_number>>>(ptr_device_filt_hits_x, ptr_device_filt_hits_y, ptr_left_offset, ptr_right_offset, ptr_seq_dev_mem, ptr_seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len), n_hits_kept, n_frags_per_block);
                 
-                //threads_number = 128;
-                //number_of_blocks = (n_hits_kept / threads_number) + 1;
-                //cudaProfilerStart();
-                //kernel_frags_forward_per_thread<<<number_of_blocks, threads_number>>>(ptr_device_filt_hits_x, ptr_device_filt_hits_y, ptr_left_offset, ptr_right_offset, ptr_seq_dev_mem, ptr_seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len), n_hits_kept);
                 ret = cudaDeviceSynchronize();
                 
                 if(ret != cudaSuccess){ fprintf(stderr, "Failed on generating forward frags. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
@@ -1119,7 +1116,7 @@ int main(int argc, char ** argv)
             fprintf(stdout, "[INFO] frags Q-R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
 #endif
 
-            /*
+			/*            
             char name[100] = "\0";
             sprintf(name, "onlyfrags-forward_%d", split);
 
@@ -1494,7 +1491,6 @@ int main(int argc, char ** argv)
             //printf("sending blocks: %u\n", number_of_blocks);
             //printf("We are sending: posinquery-wo=%u posinref-wo=%u MIN1=%u MIN2=%u\n", pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len));
 
-            //number_of_blocks = 20; // REMOVE !!
 
 			number_of_blocks = (n_hits_kept / n_frags_per_block) + 1;
 

@@ -392,12 +392,10 @@ uint32_t filter_hits_forward(uint64_t * diagonals, uint32_t * indexing_numbers, 
     ++t_kept;
 
 
-    while (t < (n_hits_found-1)) {
+    while (t < (n_hits_found)) {
 
-        if(diagonal == ((int64_t) hits[indexing_numbers[t]].p1 - (int64_t) hits[indexing_numbers[t]].p2) && hits[indexing_numbers[t]].p1 < (last_position+63)){
+        if(diagonal != ((int64_t) hits[indexing_numbers[t]].p1 - (int64_t) hits[indexing_numbers[t]].p2) || hits[indexing_numbers[t]].p1 > (last_position+63)){
             
-        }else{
-
             last_position = hits[indexing_numbers[t]].p1;
             diagonal = (int64_t) hits[indexing_numbers[t]].p1 - (int64_t) hits[indexing_numbers[t]].p2;
             filtered_hits_x[t_kept] = hits[indexing_numbers[t]].p1;
@@ -419,13 +417,11 @@ uint32_t filter_hits_reverse(uint64_t * diagonals, uint32_t * indexing_numbers, 
     filtered_hits_y[t_kept] = hits[indexing_numbers[0]].p2;
     ++t_kept;
 
-    while (t < (n_hits_found-1)) {
+    while (t < (n_hits_found)) {
 
         //fprintf(stdout, "dprev: % "PRId64", dnew: %" PRId64"\n", diagonal, (int64_t) hits[indexing_numbers[t]].p1 + (int64_t) hits[indexing_numbers[t]].p2);
 
-        if(diagonal == ((int64_t) hits[indexing_numbers[t]].p1 - (int64_t) hits[indexing_numbers[t]].p2) && hits[indexing_numbers[t]].p1 < (last_position+63)){
-            
-        }else{
+        if(diagonal != ((int64_t) hits[indexing_numbers[t]].p1 - (int64_t) hits[indexing_numbers[t]].p2) || hits[indexing_numbers[t]].p1 > (last_position+63)){
 
             last_position = hits[indexing_numbers[t]].p1;
             diagonal = (int64_t) hits[indexing_numbers[t]].p1 - (int64_t) hits[indexing_numbers[t]].p2;

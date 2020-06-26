@@ -111,7 +111,6 @@ __global__ void kernel_frags_forward_register(uint32_t * h_p1, uint32_t * h_p2, 
 	__shared__ int32_t r_o[32];
 
 
-	//int32_t per_block = (uint32_t) n_frags_per_block;
     int32_t curr_frag = 0;
     int32_t real_id = blockIdx.x * 32;
     int32_t prev_d = 0xFFFFFFFF, x_begin = 0xFFFFFFFF, x_finish = 0xFFFFFFFF;
@@ -125,7 +124,7 @@ __global__ void kernel_frags_forward_register(uint32_t * h_p1, uint32_t * h_p2, 
     while(curr_frag < 32)
     {
 
-		if(real_id >= n_hits_kept) return;
+		if(real_id >= n_hits_kept) break;
 
 		int32_t hp1 = hp1_shared[curr_frag];
 		uint32_t best_offset_left = (uint32_t) hp1;
