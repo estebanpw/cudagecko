@@ -194,9 +194,9 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
         }
     }
 
-
+#ifdef SHOWTIME
     fprintf(stdout, "[INFO] Remaining frags %" PRIu32" out of %" PRIu32" on strand %c\n", written_frags, n_frags, strand);
-    
+#endif
 
 }
 

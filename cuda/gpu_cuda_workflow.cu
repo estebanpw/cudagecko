@@ -92,13 +92,14 @@ int main(int argc, char ** argv)
     uint64_t bytes_for_words = (factor * effective_global_ram); // 512 MB for words
     uint64_t words_at_once = bytes_for_words / (8+8+4+4); 
     uint64_t max_hits = (effective_global_ram - bytes_for_words) / (8+8+4+4); // The rest for allocating hits
-	uint32_t bytes_to_subtract = max_hits * (8+4);
+	uint64_t bytes_to_subtract = max_hits * (8+4);
 
 
 
 
     ret = cudaMalloc(&data_mem, (effective_global_ram - bytes_to_subtract) * sizeof(char)); 
     if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pool memory in device. Error: %d\n", ret); exit(-1); }
+	fprintf(stdout, "[INFO] Memory pool at %p of size %lu bytes\n", data_mem, (effective_global_ram - bytes_to_subtract) * sizeof(char));
 
 
 	char * pre_alloc;
@@ -921,9 +922,9 @@ int main(int argc, char ** argv)
             end = clock();
 #ifdef SHOWTIME
             fprintf(stdout, "[INFO] hits Q-R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
-#endif
 
             fprintf(stdout, "[INFO] Generated %" PRIu32" hits on split %d -> (%d%%)[%u,%u]{%u,%u}\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len), pos_in_query, pos_in_ref, items_read_x, items_read_y);
+#endif
 
             // Print hits for debug
             //for(i=0; i<n_hits_found; i++){
@@ -1030,10 +1031,9 @@ int main(int argc, char ** argv)
             end = clock();
 #ifdef SHOWTIME
             fprintf(stdout, "[INFO] filterhits Q-R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
-#endif
 
             fprintf(stdout, "[INFO] Remaining hits %" PRIu32"\n", n_hits_kept);
-
+#endif
             //for(i=0; i<n_hits_kept; i++){
                 //printf("%" PRIu64"\n", diagonals[i]);
                 //fprintf(stdout, "Frag,%" PRIu32",%" PRIu32",%" PRIu32",%" PRIu32",f,0,32,32,32,1.0,1.0,0,0\n", filtered_hits_x[i], filtered_hits_y[i], filtered_hits_x[i]+32, filtered_hits_y[i]+32);
@@ -1079,11 +1079,20 @@ int main(int argc, char ** argv)
             uint32_t * ptr_device_filt_hits_y = (uint32_t *) (base_ptr + address_checker);
             address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 32);
 
-            uint32_t * ptr_left_offset = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 32);
+			// For half of the hits and frags we use the memory pool and for the other half we use the prealloc pool for sorting
+			// Otherwise if there are too many hits they wont fit in just one pool
 
-            uint32_t * ptr_right_offset = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 32);
+			uint64_t address_checker_pre_alloc = 0;
+			char * base_pre_alloc_ptr = &pre_alloc[0];
+			
+
+            uint32_t * ptr_left_offset = (uint32_t *) (base_pre_alloc_ptr + address_checker_pre_alloc);
+            address_checker_pre_alloc = realign_address(address_checker_pre_alloc + max_hits * sizeof(uint32_t), 32);
+
+            uint32_t * ptr_right_offset = (uint32_t *) (base_pre_alloc_ptr + address_checker_pre_alloc);
+            address_checker_pre_alloc = realign_address(address_checker_pre_alloc + max_hits * sizeof(uint32_t), 32);
+
+
 
 
 
@@ -1308,9 +1317,9 @@ int main(int argc, char ** argv)
             end = clock();
 #ifdef SHOWTIME
             fprintf(stdout, "[INFO] hits Q-RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
-#endif
 
             fprintf(stdout, "[INFO] Generated %" PRIu32" hits on reversed split %d -> (%d%%)[%u,%u]{%u,%u}\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len), pos_in_query, pos_in_ref, items_read_x, items_read_y);
+#endif
 
 
             //printf("VALHALA 1\n");
@@ -1401,9 +1410,9 @@ int main(int argc, char ** argv)
             end = clock();
 #ifdef SHOWTIME
             fprintf(stdout, "[INFO] filterhits Q-RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
-#endif
 
             fprintf(stdout, "[INFO] Remaining hits %" PRIu32"\n", n_hits_kept);
+#endif
 
             //printf("VALHALA 2\n");
             //continue;
@@ -1466,12 +1475,19 @@ int main(int argc, char ** argv)
             uint32_t * ptr_device_filt_hits_y = (uint32_t *) (base_ptr + address_checker);
             address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
 
-            uint32_t * ptr_left_offset = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
+			//For half of the hits and frags we use the memory pool and for the other half we use the prealloc pool for sorting
+			// Otherwise if there are too many hits they wont fit in just one pool
 
-            uint32_t * ptr_right_offset = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
+			uint64_t address_checker_pre_alloc = 0;
+			char * base_pre_alloc_ptr = &pre_alloc[0];
 
+            uint32_t * ptr_left_offset = (uint32_t *) (base_pre_alloc_ptr + address_checker_pre_alloc);
+            address_checker_pre_alloc = realign_address(address_checker_pre_alloc + max_hits * sizeof(uint32_t), 32);
+
+            uint32_t * ptr_right_offset = (uint32_t *) (base_pre_alloc_ptr + address_checker_pre_alloc);
+            address_checker_pre_alloc = realign_address(address_checker_pre_alloc + max_hits * sizeof(uint32_t), 32);
+
+			//printf("r %p\n", base_ptr + address_checker);
 
             ret = cudaMemcpy(ptr_seq_dev_mem, &query_seq_host[pos_in_query-words_at_once], MIN(query_len - (pos_in_query - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy query sequence to device for frags. Error: %d\n", ret); exit(-1); }
             ret = cudaMemcpy(ptr_seq_dev_mem_aux, &ref_rev_seq_host[pos_in_ref-words_at_once], MIN(ref_len - (pos_in_ref - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device for frags. Error: %d\n", ret); exit(-1); }
