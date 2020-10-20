@@ -45,8 +45,12 @@ do
                 seqX=${array[$i]}
                 seqY=${array2[$j]}
                 echo "[GPU $DEV] ($curr/$total): ${seqX}-${seqY}" >> details
-                /usr/bin/time -f "%e" $BINDIR/gpu_cuda_workflow -query $DIR/${seqX} -ref $DIR2/${seqY} -dev $DEV -len $LEN > /dev/null 2>> details
-                cat details
+                #/usr/bin/time -f "%e" $BINDIR/gpu_cuda_workflow -query $DIR/${seqX} -ref $DIR2/${seqY} -dev $DEV -len $LEN > /dev/null 2>> details
+				/usr/bin/time -f "%e" $BINDIR/gpu_cuda_wrapper.sh $DIR/${seqX} $DIR2/${seqY} $LEN $DEV > /dev/null 2>> details
+
+				tail -n 2 details
+				
+
                 curr=`expr $curr + 1`
     done
 done
