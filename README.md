@@ -26,7 +26,7 @@ Some useful parameters:
 2. -dev        <ID of the gpu device to use, default: 0>
 3. -factor     <float between 0 and 1 to select the percentage of GPU memory reserved for words, default 0.125> NOTE: lower only if running out of memory for hits>
 4. -max_freq   <only works in --sensitive Maximum frequency per hit (default: unlimited) (fast mode can skip highly repeated seeds)>
-5. --fast      <Runs in fast mode as opposed to sensitive which is the default. This mode skips lots of repetitive seeds>
+5. --fast      <Runs in fast mode as opposed to sensitive which is the default (this mode skips lots of repetitive seeds)>
 6. --sensitive <Runs in sensitive mode (default)> 
 
 ## Unattended execution
@@ -67,6 +67,6 @@ ERROR: `Reached maximum limit of hits (max 146459306)`
 Use a smaller factor value (-factor, e.g. half of the current value). Default is 0.125 so you can lower in halves each time (0.125, 0.0625, 0.03, etc.)
 
 
-`Not enough memory in pool`
+ERROR: `Not enough memory in pool`
 
 This error will often appear in conjunction with the previous one. Use a smaller factor as well (see above).
