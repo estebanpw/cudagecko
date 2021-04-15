@@ -27,7 +27,8 @@ Some useful parameters:
 3. `-factor`     <float between 0 and 1 to select the percentage of GPU memory reserved for words, default 0.125> NOTE: lower only if running out of memory for hits>
 4. `-max_freq`   <only works in --sensitive Maximum frequency per hit (default: unlimited) (fast mode can skip highly repeated seeds)>
 5. `--fast`      <Runs in fast mode as opposed to sensitive which is the default (this mode skips lots of repetitive seeds)>
-6. `--sensitive` <Runs in sensitive mode (default)> 
+6. `--sensitive` <Runs in sensitive mode (default). This mode is exhaustive, ALL seeds are calculated.> 
+7. `--hyperfast` <Runs in hyperfast mode. This mode will match every word in one sequence to a different word in the other sequence. Only use to detect main syntenies.>
 
 ## Unattended execution
 
