@@ -496,8 +496,8 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
             fprintf(stdout, "                       (The bigger the fraction, the faster it will run - however highly similar sequences\n");
             fprintf(stdout, "                       such as human and gorilla chromosomes require a smaller fractions because of the\n");
             fprintf(stdout, "                       huge number of hits that are generated)\n");
-            fprintf(stdout, "           --fast      Runs in fast mode as opposed to sensitive (default)\n");
-			fprintf(stdout, "           --hyperfast Runs in hyper fast mode \n");
+            fprintf(stdout, "           --fast      Runs in fast mode (sensitive is default)\n");
+            fprintf(stdout, "           --hyperfast Runs in hyper fast mode \n");
             fprintf(stdout, "           --help      Shows help for program usage\n");
             fprintf(stdout, "\n");
             exit(1);
