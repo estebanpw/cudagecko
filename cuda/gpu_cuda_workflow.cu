@@ -6,7 +6,7 @@
 #include <moderngpu/kernel_mergesort.hxx>
 #include <cuda_profiler_api.h>
 
-//#define DIMENSION 1000
+#define BILLION 1000 * 1000 * 1000;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -20,6 +20,10 @@ uint64_t memory_allocation_chooser(uint64_t total_memory);
 int main(int argc, char ** argv)
 {
     clock_t start = clock(), end = clock();
+#ifdef SHOWTIME
+    struct timespec HD_start, HD_end;
+    uint64_t time_seconds = 0, time_nanoseconds = 0;
+#endif
     uint32_t i, min_length = 64, max_frequency = 0, n_frags_per_block = 32;
     float factor = 0.15;
     int fast = 0; // sensitive is default
@@ -27,7 +31,7 @@ int main(int argc, char ** argv)
     FILE * query = NULL, * ref = NULL, * out = NULL;
     init_args(argc, argv, &query, &selected_device, &ref, &out, &min_length, &fast, &max_frequency, &factor, &n_frags_per_block);
 
-
+    //cudaProfilerStart();
 
     ////////////////////////////////////////////////////////////////////////////////
     // Get info of devices
@@ -46,7 +50,6 @@ int main(int argc, char ** argv)
 
     for(i=0; i<ret_num_devices; i++){
         if( cudaSuccess != (ret = cudaGetDeviceProperties(&device, i))){ fprintf(stderr, "Failed to get cuda device property: %d\n", ret); exit(-1); }
-
         fprintf(stdout, "\tDevice [%" PRIu32"]: %s\n", i, device.name);
         global_device_RAM = device.totalGlobalMem;
         fprintf(stdout, "\t\tGlobal mem   : %" PRIu64" (%" PRIu64" MB)\n", global_device_RAM, global_device_RAM / (1024*1024));
@@ -69,12 +72,12 @@ int main(int argc, char ** argv)
     global_device_RAM = device.totalGlobalMem;
 
     
-	end = clock();
+    end = clock();
 #ifdef SHOWTIME
     fprintf(stdout, "[INFO] INIT 1 t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
 #endif
 
-	start = clock();
+    start = clock();
 
     // Calculate how much ram we can use for every chunk
     uint64_t effective_global_ram =  (global_device_RAM - memory_allocation_chooser(global_device_RAM)); //Minus 100 to 300 MBs for other stuff
@@ -88,22 +91,22 @@ int main(int argc, char ** argv)
     // The other one depends on number of hits (sort hits + filterhits + frags)
 
     if(fast == 2) factor = 0.45;
-	else if(fast == 1) factor = 0.45;
+    else if(fast == 1) factor = 0.45;
     uint64_t bytes_for_words = (factor * effective_global_ram); // 512 MB for words
     uint64_t words_at_once = bytes_for_words / (8+8+4+4); 
     uint64_t max_hits = (effective_global_ram - bytes_for_words) / (8+8+4+4); // The rest for allocating hits
-	uint64_t bytes_to_subtract = max_hits * (8+4);
+    uint64_t bytes_to_subtract = max_hits * (8+4);
 
 
 
 
     ret = cudaMalloc(&data_mem, (effective_global_ram - bytes_to_subtract) * sizeof(char)); 
     if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pool memory in device. Error: %d\n", ret); exit(-1); }
-	fprintf(stdout, "[INFO] Memory pool at %p of size %lu bytes\n", data_mem, (effective_global_ram - bytes_to_subtract) * sizeof(char));
+    fprintf(stdout, "[INFO] Memory pool at %p of size %lu bytes\n", data_mem, (effective_global_ram - bytes_to_subtract) * sizeof(char));
 
 
-	char * pre_alloc;
-	ret = cudaMalloc(&pre_alloc, (bytes_to_subtract) * sizeof(char));
+    char * pre_alloc;
+    ret = cudaMalloc(&pre_alloc, (bytes_to_subtract) * sizeof(char));
     if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate auxiliary pool memory in device. Error: %d\n", ret); exit(-1); }
 
     fprintf(stdout, "[INFO] You can have %" PRIu64" MB for words (i.e. %" PRIu64" words), and %" PRIu64" MB for hits (i.e. %" PRIu64" hits)\n", 
@@ -112,17 +115,17 @@ int main(int argc, char ** argv)
     fprintf(stdout, "[INFO] Filtering at a minimum length of %" PRIu32" bps\n", min_length);
     if(fast == 1) 
         fprintf(stdout, "[INFO] Running on fast mode (some repetitive seeds will be skipped)\n");
-	else if(fast == 2)
-		fprintf(stdout, "[INFO] Running on hyper fast mode (some repetitive seeds will be skipped)\n");
+    else if(fast == 2)
+        fprintf(stdout, "[INFO] Running on hyper fast mode (some repetitive seeds will be skipped)\n");
     else
         fprintf(stdout, "[INFO] Running on sensitive mode (ALL seeds are computed [mf:%" PRIu32"])\n", max_frequency);
 
    
-	// Allocate memory pool in GPU and pass it to moderngpu
-	Mem_pool mptr;
-	mptr.mem_ptr = pre_alloc;
-	mptr.address = 0;
-	mptr.limit = bytes_to_subtract;
+    // Allocate memory pool in GPU and pass it to moderngpu
+    Mem_pool mptr;
+    mptr.mem_ptr = pre_alloc;
+    mptr.address = 0;
+    mptr.limit = bytes_to_subtract;
     mgpu::standard_context_t context(false, 0, &mptr);
     //mgpu::standard_context_t context(false, 0, NULL);
 
@@ -144,8 +147,10 @@ int main(int argc, char ** argv)
     //uint32_t query_len = get_seq_len(query);
     //uint32_t ref_len = get_seq_len(ref);
 
-
-	start = clock();
+    // This adds real rev time
+#ifdef SHOWTIME
+    clock_gettime(CLOCK_MONOTONIC, &HD_start);
+#endif
 
     // Load faster
     fseek(query, 0L, SEEK_END);
@@ -168,12 +173,15 @@ int main(int argc, char ** argv)
 
     free(s_buffer);
 
-	end = clock();
+    // This adds real rev time
 #ifdef SHOWTIME
-	uint64_t real_rev_time = (uint64_t) (end - start);
+    clock_gettime(CLOCK_MONOTONIC, &HD_end);
+    time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
+    time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
 #endif
 
 
+    
     fprintf(stdout, "[INFO] Qlen: %" PRIu32"; Rlen: %" PRIu32"\n", query_len, ref_len);
 
 
@@ -209,8 +217,9 @@ int main(int argc, char ** argv)
     ret = cudaHostAlloc(&host_pinned_mem, pinned_bytes_on_host, cudaHostAllocMapped); 
     if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pinned memory for pool. Error: %d\n", ret); exit(-1); }
     
-
-    start = clock();
+#ifdef SHOWTIME
+    clock_gettime(CLOCK_MONOTONIC, &HD_start);
+#endif
     char * query_seq_host, * ref_seq_host, * ref_rev_seq_host;
     base_ptr_pinned = (char *) &host_pinned_mem[0];
     query_seq_host = (char *) &host_pinned_mem[0];
@@ -352,10 +361,8 @@ int main(int argc, char ** argv)
 
 
 
-
         ret = cudaMemcpy(ptr_seq_dev_mem_aux, ref_seq_host, ref_len, cudaMemcpyHostToDevice);
         if(ret != cudaSuccess){ fprintf(stderr, "Could not copy reference sequence to device for reversing. Error: %d\n", ret); exit(-1); }
-
         //cudaProfilerStart();
         kernel_reverse_complement<<<number_of_blocks, threads_number>>>(ptr_seq_dev_mem_aux, ptr_seq_dev_mem_reverse_aux, ref_len);
         //cudaProfilerStop();
@@ -378,7 +385,7 @@ int main(int argc, char ** argv)
 
 
     ret = cudaDeviceSynchronize();
-    end = clock();
+    
 
     //cudaFree(seq_dev_mem_aux);
     //cudaFree(seq_dev_mem_reverse_aux);
@@ -389,13 +396,21 @@ int main(int argc, char ** argv)
     //    }
     //}
 
-
     // Print some info
 #ifdef SHOWTIME
-    fprintf(stdout, "[INFO] rev comp t=%f\n", (float)((clock_t) real_rev_time + (end - start)) / CLOCKS_PER_SEC);
-#endif
+    end = clock();
+    clock_gettime(CLOCK_MONOTONIC, &HD_end);
+    time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
+    time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
+    time_seconds *= BILLION;
+    fprintf(stdout, "[INFO] rev comp t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+    time_seconds = 0;
+    time_nanoseconds = 0;
+#endif 
 
-	start = clock();
+#ifdef SHOWTIME
+    clock_gettime(CLOCK_MONOTONIC, &HD_start);
+#endif
 
     fprintf(stdout, "[INFO] Showing start of reference sequence:\n");
     
@@ -554,10 +569,14 @@ int main(int argc, char ** argv)
     ////////////////////////////////////////////////////////////////////////////////
     // Read the query and reference in blocks
     ////////////////////////////////////////////////////////////////////////////////
-
-	end = clock();
 #ifdef SHOWTIME
-    fprintf(stdout, "[INFO] INIT 3 t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+    clock_gettime(CLOCK_MONOTONIC, &HD_end);
+    time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
+    time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
+    time_seconds *= BILLION;
+    fprintf(stdout, "[INFO] INIT 3 t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+    time_seconds = 0;
+    time_nanoseconds = 0;
 #endif
 
     int split = 0;
@@ -584,9 +603,9 @@ int main(int argc, char ** argv)
         //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (1). Error: %d\n", ret); exit(-1); }
         //ret = cudaMalloc(&values, words_at_once * sizeof(uint32_t));
         //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (2). Error: %d\n", ret); exit(-1); }
-
-        start = clock();
-
+#ifdef SHOWTIME
+        clock_gettime(CLOCK_MONOTONIC, &HD_start);
+#endif
         // ## POINTER SECTION 1
         char * ptr_seq_dev_mem = &data_mem[0];
         char * base_ptr = ptr_seq_dev_mem;
@@ -635,10 +654,10 @@ int main(int argc, char ** argv)
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on query. Error: %d\n", ret); exit(-1); }
         }
-		else
-		{
-			fprintf(stdout, "[WARNING] Zero blocks for query words\n");
-		}
+        else
+        {
+            fprintf(stdout, "[WARNING] Zero blocks for query words\n");
+        }
 
         //cudaFree(seq_dev_mem);
         //cudaFree(data_mem);
@@ -658,10 +677,14 @@ int main(int argc, char ** argv)
         free(kmers); free(poses);
         fclose(anything8);
         */
-        
-        end = clock();
 #ifdef SHOWTIME
-        fprintf(stdout, "[INFO] words Q t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+        clock_gettime(CLOCK_MONOTONIC, &HD_end);
+        time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
+        time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
+        time_seconds *= BILLION;
+        fprintf(stdout, "[INFO] words Q t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+        time_seconds = 0;
+        time_nanoseconds = 0;
 #endif
 
         ////////////////////////////////////////////////////////////////////////////////
@@ -680,9 +703,9 @@ int main(int argc, char ** argv)
 
 
         // ## POINTER SECTION 2
-
-        start = clock();
-        
+#ifdef SHOWTIME
+        clock_gettime(CLOCK_MONOTONIC, &HD_start);
+#endif        
         //address_checker = realign_address(address_checker, 8);
         //uint64_t * ptr_keys_buf = (uint64_t *) (base_ptr + address_checker);
         //address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
@@ -715,9 +738,9 @@ int main(int argc, char ** argv)
         //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on query. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
 
-		mergesort(ptr_keys, ptr_values, items_read_x, mgpu::less_t<uint64_t>(), context);
-		ret = cudaDeviceSynchronize();
-		if(ret != cudaSuccess){ fprintf(stderr, "MERGESORT sorting failed on query. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+        mergesort(ptr_keys, ptr_values, items_read_x, mgpu::less_t<uint64_t>(), context);
+        ret = cudaDeviceSynchronize();
+        if(ret != cudaSuccess){ fprintf(stderr, "MERGESORT sorting failed on query. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
         
 
         // Download sorted kmers
@@ -733,11 +756,16 @@ int main(int argc, char ** argv)
 
         //ret = cudaFree(d_temp_storage);
         //if(ret != cudaSuccess){ fprintf(stderr, "Bad free of temp storage (1): %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
-        
-        end = clock();
 #ifdef SHOWTIME
-        fprintf(stdout, "[INFO] sortwords Q t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
-#endif
+        clock_gettime(CLOCK_MONOTONIC, &HD_end);
+        time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
+        time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
+
+        time_seconds *= BILLION;
+        fprintf(stdout, "[INFO] sortwords Q t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+        time_seconds = 0;
+        time_nanoseconds = 0;
+#endif 
 
         pos_in_query += words_at_once;
 
@@ -765,9 +793,9 @@ int main(int argc, char ** argv)
             ////////////////////////////////////////////////////////////////////////////////
             // FORWARD strand in the reference
             ////////////////////////////////////////////////////////////////////////////////
-
-            start = clock();
-
+#ifdef SHOWTIME
+            clock_gettime(CLOCK_MONOTONIC, &HD_start);
+#endif
             uint32_t items_read_y = MIN(ref_len - pos_in_ref, words_at_once);
 
             //ret = cudaMalloc(&seq_dev_mem, words_at_once * sizeof(char));
@@ -812,15 +840,19 @@ int main(int argc, char ** argv)
                 if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on ref. Error: %d\n", ret); exit(-1); }
 
             }
-			else
-			{
-				fprintf(stdout, "[WARNING] Zero blocks for ref words\n");
-			}
-
-            end = clock();
+            else
+            {
+                fprintf(stdout, "[WARNING] Zero blocks for ref words\n");
+            }
 #ifdef SHOWTIME
-            fprintf(stdout, "[INFO] words R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
-#endif
+            clock_gettime(CLOCK_MONOTONIC, &HD_end);
+            time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
+            time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
+            time_seconds *= BILLION;
+            fprintf(stdout, "[INFO] words R t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            time_seconds = 0;
+            time_nanoseconds = 0;
+#endif 
 
 
             //cudaFree(seq_dev_mem);
@@ -837,8 +869,9 @@ int main(int argc, char ** argv)
             //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device (4). Error: %d\n", ret); exit(-1); }
 
             // ## POINTER SECTION 4
-
-            start = clock();
+#ifdef SHOWTIME
+            clock_gettime(CLOCK_MONOTONIC, &HD_start);
+#endif
         
             //address_checker = realign_address(address_checker, 8);
             //ptr_keys_buf = (uint64_t *) (base_ptr + address_checker);
@@ -868,10 +901,10 @@ int main(int argc, char ** argv)
             //ret = cudaDeviceSynchronize();
             //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on ref. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
-			mergesort(ptr_keys, ptr_values, items_read_y, mgpu::less_t<uint64_t>(), context);
+            mergesort(ptr_keys, ptr_values, items_read_y, mgpu::less_t<uint64_t>(), context);
 
-			ret = cudaDeviceSynchronize();
-			if(ret != cudaSuccess){ fprintf(stderr, "MODERNGPU sorting failed on ref words. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            ret = cudaDeviceSynchronize();
+            if(ret != cudaSuccess){ fprintf(stderr, "MODERNGPU sorting failed on ref words. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
 
 
@@ -885,11 +918,15 @@ int main(int argc, char ** argv)
             //if(ret != cudaSuccess){ fprintf(stderr, "Bad free of temp storage (2): %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
             pos_in_ref += words_at_once;
-
-            end = clock();
 #ifdef SHOWTIME
-            fprintf(stdout, "[INFO] sortwords R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
-#endif
+            clock_gettime(CLOCK_MONOTONIC, &HD_end);
+            time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
+            time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
+            time_seconds *= BILLION;
+            fprintf(stdout, "[INFO] sortwords R t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            time_seconds = 0;
+            time_nanoseconds = 0;
+#endif 
 
 
             ////////////////////////////////////////////////////////////////////////////////
@@ -909,22 +946,26 @@ int main(int argc, char ** argv)
             //cudaFree(values);
             //cudaFree(keys_buf);
             //cudaFree(values_buf);
-
-            start = clock();
+#ifdef SHOWTIME
+            clock_gettime(CLOCK_MONOTONIC, &HD_start);
+#endif
 
             uint32_t n_hits_found;
             if(fast == 2)
                 n_hits_found = generate_hits_fast(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             else
                 n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency, fast);
-            
-
-            end = clock();
 #ifdef SHOWTIME
-            fprintf(stdout, "[INFO] hits Q-R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
-
+            clock_gettime(CLOCK_MONOTONIC, &HD_end);
+            time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
+            time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
+            time_seconds *= BILLION;
+            fprintf(stdout, "[INFO] hits Q-R t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            time_seconds = 0;
+            time_nanoseconds = 0;
             fprintf(stdout, "[INFO] Generated %" PRIu32" hits on split %d -> (%d%%)[%u,%u]{%u,%u}\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len), pos_in_query, pos_in_ref, items_read_x, items_read_y);
-#endif
+#endif 
+
 
             // Print hits for debug
             //for(i=0; i<n_hits_found; i++){
@@ -952,9 +993,9 @@ int main(int argc, char ** argv)
 
 
             // ## POINTER SECTION 5
-
-            start = clock();
-
+#ifdef SHOWTIME
+            clock_gettime(CLOCK_MONOTONIC, &HD_start);
+#endif
             address_checker = 0;
             base_ptr = &data_mem[0];
             address_checker = realign_address(address_checker, 8);
@@ -996,11 +1037,11 @@ int main(int argc, char ** argv)
             //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
            
 
-			mergesort(ptr_device_diagonals, ptr_device_hits, n_hits_found, mgpu::less_t<uint64_t>(), context);
+            mergesort(ptr_device_diagonals, ptr_device_hits, n_hits_found, mgpu::less_t<uint64_t>(), context);
 
-			ret = cudaDeviceSynchronize();
+            ret = cudaDeviceSynchronize();
 
-			if(ret != cudaSuccess){ fprintf(stderr, "MODERNGPU sorting failed on query-ref hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stderr, "MODERNGPU sorting failed on query-ref hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
 
 
@@ -1015,25 +1056,34 @@ int main(int argc, char ** argv)
             //for(i=0; i<n_hits_found; i++){
             //    fprintf(stdout, "%" PRIu32" %" PRIu32"\n", hits[indexing_numbers[i]].p1, hits[indexing_numbers[i]].p2);
             //}
-
-            end = clock();
 #ifdef SHOWTIME
-            fprintf(stdout, "[INFO] sorthits Q-R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
-#endif
+            clock_gettime(CLOCK_MONOTONIC, &HD_end);
+            time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
+            time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
+            time_seconds *= BILLION;
+            fprintf(stdout, "[INFO] sorthits Q-R t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            time_seconds = 0;
+            time_nanoseconds = 0;
+#endif 
 
             memset(filtered_hits_x, 0x0000, n_hits_found * sizeof(uint32_t));
             memset(filtered_hits_y, 0x0000, n_hits_found * sizeof(uint32_t));
-
-            start = clock();
-
+#ifdef SHOWTIME
+            clock_gettime(CLOCK_MONOTONIC, &HD_start);
+#endif
             uint32_t n_hits_kept = filter_hits_forward(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
 
-            end = clock();
 #ifdef SHOWTIME
-            fprintf(stdout, "[INFO] filterhits Q-R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
-
+            clock_gettime(CLOCK_MONOTONIC, &HD_end);
+            time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
+            time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
+            time_seconds *= BILLION;
+            fprintf(stdout, "[INFO] filterhits Q-R t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            time_seconds = 0;
+            time_nanoseconds = 0;
             fprintf(stdout, "[INFO] Remaining hits %" PRIu32"\n", n_hits_kept);
-#endif
+#endif 
+            
             //for(i=0; i<n_hits_kept; i++){
                 //printf("%" PRIu64"\n", diagonals[i]);
                 //fprintf(stdout, "Frag,%" PRIu32",%" PRIu32",%" PRIu32",%" PRIu32",f,0,32,32,32,1.0,1.0,0,0\n", filtered_hits_x[i], filtered_hits_y[i], filtered_hits_x[i]+32, filtered_hits_y[i]+32);
@@ -1061,9 +1111,9 @@ int main(int argc, char ** argv)
 
 
             // ## POINTER SECTION 6
-
-            start = clock();
-
+#ifdef SHOWTIME
+            clock_gettime(CLOCK_MONOTONIC, &HD_start);
+#endif
             address_checker = 0;
             base_ptr = &data_mem[0];
             ptr_seq_dev_mem = (char *) (base_ptr);
@@ -1079,12 +1129,11 @@ int main(int argc, char ** argv)
             uint32_t * ptr_device_filt_hits_y = (uint32_t *) (base_ptr + address_checker);
             address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 32);
 
-			// For half of the hits and frags we use the memory pool and for the other half we use the prealloc pool for sorting
-			// Otherwise if there are too many hits they wont fit in just one pool
+            // For half of the hits and frags we use the memory pool and for the other half we use the prealloc pool for sorting
+            // Otherwise if there are too many hits they wont fit in just one pool
 
-			uint64_t address_checker_pre_alloc = 0;
-			char * base_pre_alloc_ptr = &pre_alloc[0];
-			
+            uint64_t address_checker_pre_alloc = 0;
+            char * base_pre_alloc_ptr = &pre_alloc[0];
 
             uint32_t * ptr_left_offset = (uint32_t *) (base_pre_alloc_ptr + address_checker_pre_alloc);
             address_checker_pre_alloc = realign_address(address_checker_pre_alloc + max_hits * sizeof(uint32_t), 32);
@@ -1110,7 +1159,7 @@ int main(int argc, char ** argv)
             //    printf(" \t\t y: %.32s %" PRIu64"\n", &ref_seq_host[filtered_hits_y[i]], filtered_hits_y[i]);
             //}
 
-			number_of_blocks = (n_hits_kept / n_frags_per_block) + 1;
+            number_of_blocks = (n_hits_kept / n_frags_per_block) + 1;
 
 
 
@@ -1127,12 +1176,17 @@ int main(int argc, char ** argv)
             ret = cudaMemcpy(host_left_offset, ptr_left_offset, n_hits_kept * sizeof(uint32_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back left offset. Error: %d\n", ret); exit(-1); }
             ret = cudaMemcpy(host_right_offset, ptr_right_offset, n_hits_kept * sizeof(uint32_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back right offset. Error: %d\n", ret); exit(-1); }
 
-            end = clock();
 #ifdef SHOWTIME
-            fprintf(stdout, "[INFO] frags Q-R t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
-#endif
+            clock_gettime(CLOCK_MONOTONIC, &HD_end);
+            time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
+            time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
+            time_seconds *= BILLION;
+            fprintf(stdout, "[INFO] frags Q-R t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            time_seconds = 0;
+            time_nanoseconds = 0;
+#endif 
 
-			/*            
+            /*            
             char name[100] = "\0";
             sprintf(name, "onlyfrags-forward_%d", split);
 
@@ -1190,9 +1244,9 @@ int main(int argc, char ** argv)
             //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (2). Error: %d\n", ret); exit(-1); }
             
             // ## POINTER SECTION 7
-
-            start = clock();
-
+#ifdef SHOWTIME
+            clock_gettime(CLOCK_MONOTONIC, &HD_start);
+#endif
             address_checker = 0;
             base_ptr = &data_mem[0];
             ptr_seq_dev_mem = (char *) (base_ptr);
@@ -1227,11 +1281,16 @@ int main(int argc, char ** argv)
                 ret = cudaDeviceSynchronize();
                 if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on ref reversed. Error: %d\n", ret); exit(-1); }
             }
-
-            end = clock();
 #ifdef SHOWTIME
-            fprintf(stdout, "[INFO] words RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
-#endif
+            clock_gettime(CLOCK_MONOTONIC, &HD_end);
+            time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
+            time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
+
+            time_seconds *= BILLION;
+            fprintf(stdout, "[INFO] words RC t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            time_seconds = 0;
+            time_nanoseconds = 0;
+#endif 
 
             //cudaFree(seq_dev_mem);
 
@@ -1245,9 +1304,9 @@ int main(int argc, char ** argv)
             //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (4). Error: %d\n", ret); exit(-1); }
 
             // ## POINTER SECTION 8
-
-            start = clock();
-
+#ifdef SHOWTIME
+            clock_gettime(CLOCK_MONOTONIC, &HD_start);
+#endif
             //address_checker = realign_address(address_checker, 8);
             //ptr_keys_buf = (uint64_t *) (base_ptr + address_checker);
             //address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
@@ -1274,10 +1333,10 @@ int main(int argc, char ** argv)
             //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on ref. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
 
-			mergesort(ptr_keys, ptr_values, items_read_y, mgpu::less_t<uint64_t>(), context);
-			ret = cudaDeviceSynchronize();
+            mergesort(ptr_keys, ptr_values, items_read_y, mgpu::less_t<uint64_t>(), context);
+            ret = cudaDeviceSynchronize();
 
-			if(ret != cudaSuccess){ fprintf(stderr, "MODERNGPU sorting failed on words reverse. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stderr, "MODERNGPU sorting failed on words reverse. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
 
             // Download kmers
@@ -1290,11 +1349,15 @@ int main(int argc, char ** argv)
             //if(ret != cudaSuccess){ fprintf(stderr, "Bad free of temp storage (2): %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
             pos_in_ref += words_at_once;
-
-            end = clock();
 #ifdef SHOWTIME
-            fprintf(stdout, "[INFO] sortwords RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
-#endif
+            clock_gettime(CLOCK_MONOTONIC, &HD_end);
+            time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
+            time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
+            time_seconds *= BILLION;
+            fprintf(stdout, "[INFO] sortwords RC t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            time_seconds = 0;
+            time_nanoseconds = 0;
+#endif 
 
             ////////////////////////////////////////////////////////////////////////////////
             // Generate hits for the current split BUT REVERSED !
@@ -1305,21 +1368,27 @@ int main(int argc, char ** argv)
             //cudaFree(values);
             //cudaFree(keys_buf);
             //cudaFree(values_buf);
-
-            start = clock();
-
+#ifdef SHOWTIME
+            clock_gettime(CLOCK_MONOTONIC, &HD_start);
+#endif
             uint32_t n_hits_found;
             if(fast == 2)
                 n_hits_found = generate_hits_fast(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             else
                 n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency, fast);
-            
-            end = clock();
-#ifdef SHOWTIME
-            fprintf(stdout, "[INFO] hits Q-RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
 
+#ifdef SHOWTIME
+            clock_gettime(CLOCK_MONOTONIC, &HD_end);
+            time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
+            time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
+
+            time_seconds *= BILLION;
+            fprintf(stdout, "[INFO] hits Q-RC t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            time_seconds = 0;
+            time_nanoseconds = 0;
             fprintf(stdout, "[INFO] Generated %" PRIu32" hits on reversed split %d -> (%d%%)[%u,%u]{%u,%u}\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len), pos_in_query, pos_in_ref, items_read_x, items_read_y);
-#endif
+#endif 
+
 
 
             //printf("VALHALA 1\n");
@@ -1339,9 +1408,9 @@ int main(int argc, char ** argv)
             //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for hits in device (4). Error: %d\n", ret); exit(-1); }
 
             // ## POINTER SECTION 9
-
-            start = clock();
-
+#ifdef SHOWTIME
+            clock_gettime(CLOCK_MONOTONIC, &HD_start);
+#endif
             base_ptr = &data_mem[0];
             address_checker = 0;
             address_checker = realign_address(address_checker, 8);
@@ -1381,11 +1450,11 @@ int main(int argc, char ** argv)
             //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
 
-			mergesort(ptr_device_diagonals, ptr_device_hits, n_hits_found, mgpu::less_t<uint64_t>(), context);
+            mergesort(ptr_device_diagonals, ptr_device_hits, n_hits_found, mgpu::less_t<uint64_t>(), context);
 
-			ret = cudaDeviceSynchronize();
+            ret = cudaDeviceSynchronize();
 
-			if(ret != cudaSuccess){ fprintf(stderr, "MODERNGPU sorting failed on hits rev. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stderr, "MODERNGPU sorting failed on hits rev. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
             
             // Download hits (actually just number indices)
@@ -1395,24 +1464,37 @@ int main(int argc, char ** argv)
             ret = cudaMemcpy(diagonals, ptr_device_diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
 
-            end = clock();
 #ifdef SHOWTIME
-            fprintf(stdout, "[INFO] sortinghits Q-RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
-#endif
+            clock_gettime(CLOCK_MONOTONIC, &HD_end);
+            time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
+            time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
+
+            time_seconds *= BILLION;
+            fprintf(stdout, "[INFO] sortinghits Q-RC t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            time_seconds = 0;
+            time_nanoseconds = 0;
+#endif 
+
 
 
             memset(filtered_hits_x, 0x0000, n_hits_found * sizeof(uint32_t));
             memset(filtered_hits_y, 0x0000, n_hits_found * sizeof(uint32_t));
-
-            start = clock();
+#ifdef SHOWTIME
+            clock_gettime(CLOCK_MONOTONIC, &HD_start);
+#endif
             uint32_t n_hits_kept = filter_hits_reverse(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
 
-            end = clock();
 #ifdef SHOWTIME
-            fprintf(stdout, "[INFO] filterhits Q-RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+            clock_gettime(CLOCK_MONOTONIC, &HD_end);
+            time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
+            time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
 
+            time_seconds *= BILLION;
+            fprintf(stdout, "[INFO] filterhits Q-RC t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            time_seconds = 0;
+            time_nanoseconds = 0;
             fprintf(stdout, "[INFO] Remaining hits %" PRIu32"\n", n_hits_kept);
-#endif
+#endif 
 
             //printf("VALHALA 2\n");
             //continue;
@@ -1458,9 +1540,9 @@ int main(int argc, char ** argv)
 
 
             // ## POINTER SECTION 10
-
-            start = clock();
-
+#ifdef SHOWTIME
+            clock_gettime(CLOCK_MONOTONIC, &HD_start);
+#endif
             address_checker = 0;
             base_ptr = &data_mem[0];
             ptr_seq_dev_mem = (char *) (base_ptr);
@@ -1475,11 +1557,11 @@ int main(int argc, char ** argv)
             uint32_t * ptr_device_filt_hits_y = (uint32_t *) (base_ptr + address_checker);
             address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
 
-			//For half of the hits and frags we use the memory pool and for the other half we use the prealloc pool for sorting
-			// Otherwise if there are too many hits they wont fit in just one pool
+            //For half of the hits and frags we use the memory pool and for the other half we use the prealloc pool for sorting
+            // Otherwise if there are too many hits they wont fit in just one pool
 
-			uint64_t address_checker_pre_alloc = 0;
-			char * base_pre_alloc_ptr = &pre_alloc[0];
+            uint64_t address_checker_pre_alloc = 0;
+            char * base_pre_alloc_ptr = &pre_alloc[0];
 
             uint32_t * ptr_left_offset = (uint32_t *) (base_pre_alloc_ptr + address_checker_pre_alloc);
             address_checker_pre_alloc = realign_address(address_checker_pre_alloc + max_hits * sizeof(uint32_t), 32);
@@ -1487,7 +1569,7 @@ int main(int argc, char ** argv)
             uint32_t * ptr_right_offset = (uint32_t *) (base_pre_alloc_ptr + address_checker_pre_alloc);
             address_checker_pre_alloc = realign_address(address_checker_pre_alloc + max_hits * sizeof(uint32_t), 32);
 
-			//printf("r %p\n", base_ptr + address_checker);
+            //printf("r %p\n", base_ptr + address_checker);
 
             ret = cudaMemcpy(ptr_seq_dev_mem, &query_seq_host[pos_in_query-words_at_once], MIN(query_len - (pos_in_query - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy query sequence to device for frags. Error: %d\n", ret); exit(-1); }
             ret = cudaMemcpy(ptr_seq_dev_mem_aux, &ref_rev_seq_host[pos_in_ref-words_at_once], MIN(ref_len - (pos_in_ref - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device for frags. Error: %d\n", ret); exit(-1); }
@@ -1508,18 +1590,18 @@ int main(int argc, char ** argv)
 
 
             //number_of_blocks = n_hits_kept; 
-			number_of_blocks = (n_hits_kept / n_frags_per_block) + 1;
+            number_of_blocks = (n_hits_kept / n_frags_per_block) + 1;
 
             //number_of_blocks = 100; 
             //printf("sending blocks: %u\n", number_of_blocks);
             //printf("We are sending: posinquery-wo=%u posinref-wo=%u MIN1=%u MIN2=%u\n", pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len));
 
 
-			number_of_blocks = (n_hits_kept / n_frags_per_block) + 1;
+            number_of_blocks = (n_hits_kept / n_frags_per_block) + 1;
 
             if(number_of_blocks != 0)
-			{
-				// Plot twist: its the same kernel for forward and reverse since sequence is completely reversed
+            {
+                // Plot twist: its the same kernel for forward and reverse since sequence is completely reversed
                 kernel_frags_forward_register<<<number_of_blocks, threads_number>>>(ptr_device_filt_hits_x, ptr_device_filt_hits_y, ptr_left_offset, ptr_right_offset, ptr_seq_dev_mem, ptr_seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len), n_hits_kept, n_frags_per_block);
 
                 ret = cudaDeviceSynchronize();
@@ -1530,11 +1612,15 @@ int main(int argc, char ** argv)
 
             ret = cudaMemcpy(host_left_offset, ptr_left_offset, n_hits_kept * sizeof(uint32_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back left offset. Error: %d\n", ret); exit(-1); }
             ret = cudaMemcpy(host_right_offset, ptr_right_offset, n_hits_kept * sizeof(uint32_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back right offset. Error: %d\n", ret); exit(-1); }
-
-            end = clock();
 #ifdef SHOWTIME
-            fprintf(stdout, "[INFO] frags Q-RC t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
-#endif
+            clock_gettime(CLOCK_MONOTONIC, &HD_end);
+            time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
+            time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
+            time_seconds *= BILLION;
+            fprintf(stdout, "[INFO] frags Q-RC t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            time_seconds = 0;
+            time_nanoseconds = 0;
+#endif 
 
             /*           
             FILE * anything = fopen("onlyfrags-reverse.csv", "wt");
