@@ -1040,17 +1040,16 @@ int main(int argc, char ** argv)
             mergesort(ptr_device_diagonals, ptr_device_hits, n_hits_found, mgpu::less_t<uint64_t>(), context);
 
             ret = cudaDeviceSynchronize();
-
             if(ret != cudaSuccess){ fprintf(stderr, "MODERNGPU sorting failed on query-ref hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
 
 
             // Download hits (actually just number indices)
-            ret = cudaMemcpy(indexing_numbers, ptr_device_hits, n_hits_found*sizeof(uint32_t), cudaMemcpyDeviceToHost);
-            if(ret != cudaSuccess){ fprintf(stderr, "Downloading device hits. Error: %d\n", ret); exit(-1); }
+            //ret = cudaMemcpy(indexing_numbers, ptr_device_hits, n_hits_found*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device hits. Error: %d\n", ret); exit(-1); }
 
-            ret = cudaMemcpy(diagonals, ptr_device_diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
-            if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
+            //ret = cudaMemcpy(diagonals, ptr_device_diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
 
             //
             //for(i=0; i<n_hits_found; i++){
@@ -1071,7 +1070,19 @@ int main(int argc, char ** argv)
 #ifdef SHOWTIME
             clock_gettime(CLOCK_MONOTONIC, &HD_start);
 #endif
-            uint32_t n_hits_kept = filter_hits_forward(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
+            kernel_filter_hits<<<n_hits_found/(32*32)+1, 32>>>(ptr_device_diagonals, ref_len, n_hits_found);
+            ret = cudaDeviceSynchronize();
+            if(ret != cudaSuccess){ fprintf(stderr, "FILTER HITS failed on query-ref hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+
+            ret = cudaMemcpy(diagonals, ptr_device_diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
+
+
+            uint32_t n_hits_kept = filter_hits_cpu(diagonals, filtered_hits_x, filtered_hits_y, n_hits_found);
+
+
+            
+            //uint32_t n_hits_kept = filter_hits_forward(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
 
 #ifdef SHOWTIME
             clock_gettime(CLOCK_MONOTONIC, &HD_end);
@@ -1082,7 +1093,7 @@ int main(int argc, char ** argv)
             time_seconds = 0;
             time_nanoseconds = 0;
             fprintf(stdout, "[INFO] Remaining hits %" PRIu32"\n", n_hits_kept);
-#endif 
+#endif
             
             //for(i=0; i<n_hits_kept; i++){
                 //printf("%" PRIu64"\n", diagonals[i]);
@@ -1166,7 +1177,8 @@ int main(int argc, char ** argv)
 
             if(number_of_blocks != 0)
             {
-               kernel_frags_forward_register<<<number_of_blocks, threads_number>>>(ptr_device_filt_hits_x, ptr_device_filt_hits_y, ptr_left_offset, ptr_right_offset, ptr_seq_dev_mem, ptr_seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len), n_hits_kept, n_frags_per_block);
+                kernel_frags_forward_register<<<number_of_blocks, threads_number>>>(ptr_device_filt_hits_x, ptr_device_filt_hits_y, ptr_left_offset, ptr_right_offset, ptr_seq_dev_mem, ptr_seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len), n_hits_kept, n_frags_per_block);
+                //kernel_frags_forward_register<<<number_of_blocks, threads_number>>>(ptr_device_filt_hits_x, ptr_device_filt_hits_y, ptr_left_offset, ptr_right_offset, ptr_seq_dev_mem, ptr_seq_dev_mem_aux, query_len, ref_len, pos_in_query-words_at_once, pos_in_ref-words_at_once, MIN(pos_in_query, query_len), MIN(pos_in_ref, ref_len), n_hits_kept, n_frags_per_block);
                 
                 ret = cudaDeviceSynchronize();
                 
@@ -1213,9 +1225,23 @@ int main(int argc, char ** argv)
             //cudaFree(device_filt_hits_y);
             //cudaFree(left_offset);
             //cudaFree(right_offset);
-            
-            filter_and_write_frags(filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, n_hits_kept, out, 'f', ref_len, min_length);
 
+#ifdef SHOWTIME
+            clock_gettime(CLOCK_MONOTONIC, &HD_start);
+#endif
+
+            filter_and_write_frags(filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, n_hits_kept, out, 'f', ref_len, min_length);
+            //filter_and_write_frags(filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, n_hits_kept, out, 'f', ref_len, min_length);
+
+#ifdef SHOWTIME
+            clock_gettime(CLOCK_MONOTONIC, &HD_end);
+            time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
+            time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
+            time_seconds *= BILLION;
+            fprintf(stdout, "[INFO] filterFrags Q-R t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            time_seconds = 0;
+            time_nanoseconds = 0;
+#endif 
 
         }
 
@@ -1651,8 +1677,21 @@ int main(int argc, char ** argv)
             //printf("VALHALA 4\n");
             //continue;
 
+#ifdef SHOWTIME
+            clock_gettime(CLOCK_MONOTONIC, &HD_start);
+#endif
+
             filter_and_write_frags(filtered_hits_x, filtered_hits_y, host_left_offset, host_right_offset, n_hits_kept, out, 'r', ref_len, min_length);
 
+#ifdef SHOWTIME
+            clock_gettime(CLOCK_MONOTONIC, &HD_end);
+            time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
+            time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
+            time_seconds *= BILLION;
+            fprintf(stdout, "[INFO] filterFrags Q-RC t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            time_seconds = 0;
+            time_nanoseconds = 0;
+#endif 
 
         }
 

@@ -350,7 +350,12 @@ uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * 
                 hits[n_hits_found].p1 = values_x[id_x];
                 hits[n_hits_found].p2 = values_y[curr_id_y];
 
-                diagonals[n_hits_found] =  ((diff_offset + (uint64_t) values_x[id_x]) - (uint64_t) values_y[curr_id_y]) * diag_len + (diff_offset + (uint64_t) values_x[id_x]);
+                // Original way
+                //diagonals[n_hits_found] =  ((diff_offset + (uint64_t) values_x[id_x]) - (uint64_t) values_y[curr_id_y]) * diag_len + (diff_offset + (uint64_t) values_x[id_x]);
+                //printf("1 x %" PRIu32 " y %" PRIu32 " -> %" PRIu64 "\n", values_x[id_x], values_y[curr_id_y], diagonals[n_hits_found]);
+                // New way
+                diagonals[n_hits_found] = ((( ref_len + (uint64_t) values_x[id_x]) - (uint64_t) values_y[curr_id_y]) << 32) + (uint64_t) values_x[id_x];
+                //printf("2 x %" PRIu32 " y %" PRIu32 " -> %" PRIu64 "\n", values_x[id_x], values_y[curr_id_y], diagonals[n_hits_found]);
 
                 ++n_hits_found;
                 ++current_hits;
@@ -376,6 +381,21 @@ uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * 
     //printf("Generated %" PRIu64" hits \n", n_hits_found);
     return n_hits_found;
 
+}
+
+uint32_t filter_hits_cpu(uint64_t * diagonals, uint32_t * filtered_hits_x, uint32_t * filtered_hits_y, uint32_t n_hits_found){
+    if(n_hits_found == 0) return 0;
+    uint32_t t_kept = 0;
+
+    for(uint32_t i=0; i<n_hits_found; i++){
+        if(diagonals[i] != 0xFFFFFFFFFFFFFFFF){
+            filtered_hits_x[t_kept] = (uint32_t) ((diagonals[i] & 0xFFFFFFFF00000000) >> 32);
+            filtered_hits_y[t_kept] = (uint32_t) (diagonals[i] & 0x00000000FFFFFFFF);
+            
+            ++t_kept;
+        }
+    }
+    return t_kept;
 }
 
 uint32_t filter_hits_forward(uint64_t * diagonals, uint32_t * indexing_numbers, Hit * hits, uint32_t * filtered_hits_x, uint32_t * filtered_hits_y, uint32_t n_hits_found){
@@ -420,6 +440,7 @@ uint32_t filter_hits_reverse(uint64_t * diagonals, uint32_t * indexing_numbers, 
     while (t < (n_hits_found)) {
 
         //fprintf(stdout, "dprev: % "PRId64", dnew: %" PRId64"\n", diagonal, (int64_t) hits[indexing_numbers[t]].p1 + (int64_t) hits[indexing_numbers[t]].p2);
+        //printf("d %" PRId64 " xy: % " PRIu32 " %" PRIu32 "\n", (int64_t) hits[indexing_numbers[t]].p1 - (int64_t) hits[indexing_numbers[t]].p2,  hits[indexing_numbers[t]].p1, hits[indexing_numbers[t]].p2);
 
         if(diagonal != ((int64_t) hits[indexing_numbers[t]].p1 - (int64_t) hits[indexing_numbers[t]].p2) || hits[indexing_numbers[t]].p1 > (last_position+63)){
 
