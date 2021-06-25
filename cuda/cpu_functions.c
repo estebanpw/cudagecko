@@ -321,8 +321,8 @@ uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * 
     // Si no, solo saldra ruido horizontal o vertical 
 
     uint64_t id_x = 0, id_y = 0, n_hits_found = 0;
-    uint64_t diff_offset = ref_len;
-    uint64_t diag_len = MAX(query_len, ref_len);
+    //uint64_t diff_offset = ref_len; //Necessary only for square root split mode
+    //uint64_t diag_len = MAX(query_len, ref_len); //Same as before; mode double 32-bits does not need this
     uint64_t current_hits = 0;
     //int64_t last_position_y = -1;
 

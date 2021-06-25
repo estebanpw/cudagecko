@@ -502,7 +502,7 @@ int main(int argc, char ** argv)
     pinned_address_checker = realign_address(pinned_address_checker + max_hits * sizeof(uint32_t), 4);
 
 
-    uint32_t * host_left_offset,  * host_right_offset, * ascending_numbers, * indexing_numbers;
+    uint32_t * host_left_offset,  * host_right_offset, * ascending_numbers; //, * indexing_numbers; // Disabled since the ascending numbers are not used anymore
     uint64_t * diagonals;
     /*
     // These are for the device
@@ -557,8 +557,9 @@ int main(int argc, char ** argv)
     pinned_address_checker = realign_address(pinned_address_checker + max_hits * sizeof(uint32_t), 4);
     for(i=0; i<max_hits; i++) ascending_numbers[i] = i;
 
-    indexing_numbers = (uint32_t *) (base_ptr_pinned + pinned_address_checker);
-    pinned_address_checker = realign_address(pinned_address_checker + max_hits * sizeof(uint32_t), 4);
+    // Disabled since the ascending numbers are not used anymore in reality
+    //indexing_numbers = (uint32_t *) (base_ptr_pinned + pinned_address_checker);
+    //pinned_address_checker = realign_address(pinned_address_checker + max_hits * sizeof(uint32_t), 4);
 
 
     
@@ -1013,6 +1014,7 @@ int main(int argc, char ** argv)
             
 
             // We will actually sort the diagonals with associated values 0,1,2... to n and use these to index the hits array
+            // Not anymore: just leverage work from the filter kernel by directly including the y values
             ret = cudaMemcpy(ptr_device_hits, ascending_numbers, n_hits_found*sizeof(uint32_t), cudaMemcpyHostToDevice);
             if(ret != cudaSuccess){ fprintf(stderr, "Uploading forward device hits. Error: %d\n", ret); exit(-1); }
 
@@ -1045,6 +1047,7 @@ int main(int argc, char ** argv)
 
 
             // Download hits (actually just number indices)
+            // This is unused anymore - now only the sorted diagonals matter
             //ret = cudaMemcpy(indexing_numbers, ptr_device_hits, n_hits_found*sizeof(uint32_t), cudaMemcpyDeviceToHost);
             //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device hits. Error: %d\n", ret); exit(-1); }
 
@@ -1079,8 +1082,6 @@ int main(int argc, char ** argv)
 
 
             uint32_t n_hits_kept = filter_hits_cpu(diagonals, filtered_hits_x, filtered_hits_y, n_hits_found);
-
-
             
             //uint32_t n_hits_kept = filter_hits_forward(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
 
@@ -1453,6 +1454,7 @@ int main(int argc, char ** argv)
             //address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
 
             // We will actually sort the diagonals with associated values 0,1,2... to n and use these to index the hits array
+            // Not anymore: now just sort with dict y in the values to leverage work in the filter kernel
             ret = cudaMemcpy(ptr_device_hits, ascending_numbers, n_hits_found*sizeof(uint32_t), cudaMemcpyHostToDevice);
             if(ret != cudaSuccess){ fprintf(stderr, "Uploading device reverse hits. Error: %d\n", ret); exit(-1); }
 
@@ -1484,11 +1486,13 @@ int main(int argc, char ** argv)
 
             
             // Download hits (actually just number indices)
-            ret = cudaMemcpy(indexing_numbers, ptr_device_hits, n_hits_found*sizeof(uint32_t), cudaMemcpyDeviceToHost);
-            if(ret != cudaSuccess){ fprintf(stderr, "Downloading device hits. Error: %d\n", ret); exit(-1); }
+            // Not really: now y values
 
-            ret = cudaMemcpy(diagonals, ptr_device_diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
-            if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
+            //ret = cudaMemcpy(indexing_numbers, ptr_device_hits, n_hits_found*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device hits. Error: %d\n", ret); exit(-1); }
+
+            //ret = cudaMemcpy(diagonals, ptr_device_diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
 
 #ifdef SHOWTIME
             clock_gettime(CLOCK_MONOTONIC, &HD_end);
@@ -1508,7 +1512,16 @@ int main(int argc, char ** argv)
 #ifdef SHOWTIME
             clock_gettime(CLOCK_MONOTONIC, &HD_start);
 #endif
-            uint32_t n_hits_kept = filter_hits_reverse(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
+
+            kernel_filter_hits<<<n_hits_found/(32*32)+1, 32>>>(ptr_device_diagonals, ref_len, n_hits_found);
+            ret = cudaDeviceSynchronize();
+            if(ret != cudaSuccess){ fprintf(stderr, "FILTER HITS failed on query-ref-comp hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+
+            ret = cudaMemcpy(diagonals, ptr_device_diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
+
+            uint32_t n_hits_kept = filter_hits_cpu(diagonals, filtered_hits_x, filtered_hits_y, n_hits_found);
+            //uint32_t n_hits_kept = filter_hits_reverse(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
 
 #ifdef SHOWTIME
             clock_gettime(CLOCK_MONOTONIC, &HD_end);

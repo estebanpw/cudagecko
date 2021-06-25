@@ -34,9 +34,11 @@ __global__ void kernel_filter_hits(uint64_t * diagonals_merged, uint32_t ref_len
     uint64_t v = diagonals_merged[index];
     uint32_t d_curr = (uint32_t) ((v & mask_d) >> 32);
     uint32_t px = (uint32_t) (v & mask_px);
-    uint32_t py = ref_len + px - d_curr;
+    uint32_t py = ref_len + px - d_curr; //values_y[index]; 
     uint64_t res = ((uint64_t) px << (uint64_t) 32) + (uint64_t) py;
 
+
+    //printf("SEC [%d] py and values y: %u %u\n", py, values_y[index]);
     //printf("[%d] px and py: %u %u\n", blockIdx.x * 32, px, py);
 
 
@@ -49,7 +51,7 @@ __global__ void kernel_filter_hits(uint64_t * diagonals_merged, uint32_t ref_len
         v = diagonals_merged[index + i];
         uint32_t d_next = (uint32_t) ((v & mask_d) >> 32);
         uint32_t px_next = (uint32_t) (v & mask_px);
-        uint32_t py_next = ref_len + px_next - d_next;
+        uint32_t py_next = ref_len + px_next - d_next;//values_y[index + i]; 
 
         //printf("[%d] %" PRIu64 " px_next and py_next: %u %u\n", blockIdx.x * 32 + i, v, px_next, py_next);
 
