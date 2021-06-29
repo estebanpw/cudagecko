@@ -1039,7 +1039,7 @@ int main(int argc, char ** argv)
             //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
            
 
-            mergesort(ptr_device_diagonals, ptr_device_hits, n_hits_found, mgpu::less_t<uint64_t>(), context);
+            mergesort(ptr_device_diagonals, n_hits_found, mgpu::less_t<uint64_t>(), context);
 
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "MODERNGPU sorting failed on query-ref hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
@@ -1478,7 +1478,7 @@ int main(int argc, char ** argv)
             //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
 
-            mergesort(ptr_device_diagonals, ptr_device_hits, n_hits_found, mgpu::less_t<uint64_t>(), context);
+            mergesort(ptr_device_diagonals, n_hits_found, mgpu::less_t<uint64_t>(), context);
 
             ret = cudaDeviceSynchronize();
 
