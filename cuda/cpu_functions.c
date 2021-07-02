@@ -337,8 +337,8 @@ uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * 
         
         if(keys_x[id_x] == keys_y[id_y] && values_x[id_x] != 0xFFFFFFFF && values_y[id_y] != 0xFFFFFFFF) {
 
-		uint64_t step_x = 1, step_y = 1;
-		if(fast > 0) find_consecutive_seeds(id_x, id_y, keys_x, keys_y, values_x, values_y, items_x, items_y, &step_x, &step_y);
+        uint64_t step_x = 1, step_y = 1;
+        if(fast > 0) find_consecutive_seeds(id_x, id_y, keys_x, keys_y, values_x, values_y, items_x, items_y, &step_x, &step_y);
 
 
             uint64_t curr_id_y;
@@ -347,12 +347,9 @@ uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * 
 
                 if(keys_x[id_x] != keys_y[curr_id_y] || values_x[id_x] == 0xFFFFFFFF || values_y[curr_id_y] == 0xFFFFFFFF) break;
 
-                hits[n_hits_found].p1 = values_x[id_x];
-                hits[n_hits_found].p2 = values_y[curr_id_y];
+                //hits[n_hits_found].p1 = values_x[id_x];
+                //hits[n_hits_found].p2 = values_y[curr_id_y];
 
-                // Original way
-                //diagonals[n_hits_found] =  ((diff_offset + (uint64_t) values_x[id_x]) - (uint64_t) values_y[curr_id_y]) * diag_len + (diff_offset + (uint64_t) values_x[id_x]);
-                //printf("1 x %" PRIu32 " y %" PRIu32 " -> %" PRIu64 "\n", values_x[id_x], values_y[curr_id_y], diagonals[n_hits_found]);
                 // New way
                 diagonals[n_hits_found] = ((( ref_len + (uint64_t) values_x[id_x]) - (uint64_t) values_y[curr_id_y]) << 32) + (uint64_t) values_x[id_x];
                 //printf("2 x %" PRIu32 " y %" PRIu32 " -> %" PRIu64 "\n", values_x[id_x], values_y[curr_id_y], diagonals[n_hits_found]);
@@ -380,6 +377,85 @@ uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * 
 
     //printf("Generated %" PRIu64" hits \n", n_hits_found);
     return n_hits_found;
+
+}
+
+uint32_t generate_hits_sensitive_avx512(uint32_t max_hits, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
+    uint64_t * keys_y, uint32_t * values_x, uint32_t * values_y, uint32_t items_x, uint32_t items_y, uint32_t query_len, uint32_t ref_len){
+
+
+    uint64_t id_x = 0, id_y = 0;
+    uint32_t n_hits_found = 0;
+    int64_t current_hits = 0;
+
+
+    while(id_x < items_x || id_y < items_y) {
+
+        // Compare
+        if(id_x == items_x || id_y == items_y){ break; }
+
+        
+        if(keys_x[id_x] == keys_y[id_y] && values_x[id_x] != 0xFFFFFFFF && values_y[id_y] != 0xFFFFFFFF) {
+
+            uint64_t curr_id_y;
+            uint64_t partial_x_diag = ((( ref_len + (uint64_t) values_x[id_x])) << 32) + (uint64_t) values_x[id_x];
+
+            for(curr_id_y = id_y; curr_id_y < items_y; curr_id_y += 1){
+
+                if(keys_x[id_x] != keys_y[curr_id_y] || values_x[id_x] == 0xFFFFFFFF || values_y[curr_id_y] == 0xFFFFFFFF) break;
+
+                //diagonals[n_hits_found] = ((( ref_len + (uint64_t) values_x[id_x]) - (uint64_t) values_y[curr_id_y]) << 32) + (uint64_t) values_x[id_x];
+
+                ++current_hits;
+            }
+
+            if(n_hits_found + (uint32_t) current_hits >= max_hits){ fprintf(stderr, "Reached maximum limit of hits (max %" PRIu32", found %" PRIu32")\n", max_hits, n_hits_found); exit(-1);}
+
+            uint32_t advance = 0;
+            while (current_hits > 0)
+            {
+                generate_vectorized_hits(partial_x_diag, &values_y[id_y + (uint64_t) advance], &diagonals[n_hits_found + advance]);
+                advance += MIN(8, (uint32_t) current_hits);
+                current_hits -= 8; // 8 are processed at once
+            }
+
+            ++id_x;
+            n_hits_found += advance;
+            current_hits = 0;
+            
+        }
+        else if(keys_x[id_x] < keys_y[id_y]) ++id_x;
+        else ++id_y; 
+    }
+
+
+    //printf("Generated %" PRIu64" hits \n", n_hits_found);
+    return n_hits_found;
+
+}
+
+/*
+    Calculates the diagonal value of 8 hits at once
+
+    @partial_x_diag:    the precalculated partial diagonal that only depends on x
+    @values_y:          the array containing the position values of the y hits
+    @start_y:           the index position from where the current match took place (how many does not matter
+                        since the vectorised operation will calculate a chunk regardless, simply use only the
+                        results that matter)
+    @diagonals:         the array where the 64 bit diagonals should be stored
+    @start_d:           the index where to store the diagonals in the diagonals array
+
+*/
+
+void generate_vectorized_hits(uint64_t partial_x_diag, uint32_t * values_y, uint64_t * diagonals)
+{
+    Vec8uq partial_x(partial_x_diag);
+    Vec8uq partial_y;
+    Vec8uq res;
+    partial_y.load(values_y);
+    partial_y = partial_y << 32;
+    res = partial_x - partial_y;
+    res.store(diagonals);
 
 }
 

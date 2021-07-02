@@ -5,6 +5,8 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
 uint32_t generate_hits_quadratic(uint32_t words_at_once, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, uint64_t * keys_y, uint32_t * values_x, uint32_t * values_y, uint32_t items_x, uint32_t items_y, uint32_t query_len, uint32_t ref_len);
 uint32_t generate_hits_fast(uint32_t max_hits, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, uint64_t * keys_y, uint32_t * values_x, uint32_t * values_y, uint32_t items_x, uint32_t items_y, uint32_t query_len, uint32_t ref_len);
 uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, uint64_t * keys_y, uint32_t * values_x, uint32_t * values_y, uint32_t items_x, uint32_t items_y, uint32_t query_len, uint32_t ref_len, uint32_t max_frequency, int fast);
+uint32_t generate_hits_sensitive_avx512(uint32_t max_hits, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, uint64_t * keys_y, uint32_t * values_x, uint32_t * values_y, uint32_t items_x, uint32_t items_y, uint32_t query_len, uint32_t ref_len);
+void generate_vectorized_hits(uint64_t partial_x_diag, uint32_t * values_y, uint64_t * diagonals);
 uint32_t filter_hits_cpu(uint64_t * diagonals, uint32_t * filtered_hits_x, uint32_t * filtered_hits_y, uint32_t n_hits_found);
 uint32_t filter_hits_forward(uint64_t * diagonals, uint32_t * indexing_numbers, Hit * hits, uint32_t * filtered_hits_x, uint32_t * filtered_hits_y, uint32_t n_hits_found);
 uint32_t filter_hits_reverse(uint64_t * diagonals, uint32_t * indexing_numbers, Hit * hits, uint32_t * filtered_hits_x, uint32_t * filtered_hits_y, uint32_t n_hits_found);

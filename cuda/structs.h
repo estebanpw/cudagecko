@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <time.h>
 #include <math.h>
+#include "vcl/vectorclass.h"
 
 #define BUFFER_SIZE 2048
 #define CORES_PER_COMPUTE_UNIT 32
