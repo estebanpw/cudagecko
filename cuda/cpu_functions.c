@@ -387,7 +387,7 @@ uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * 
 uint32_t generate_hits_sensitive_avx512(uint32_t max_hits, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
     uint64_t * keys_y, uint32_t * values_x, uint32_t * values_y, uint32_t items_x, uint32_t items_y, uint32_t query_len, uint32_t ref_len){
 
-
+    max_hits -= 8; // This is because in the vectorised code we load 8 values without checking array boundaries
     uint64_t id_x = 0, id_y = 0;
     uint32_t n_hits_found = 0;
     int64_t current_hits = 0;

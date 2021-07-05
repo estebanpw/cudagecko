@@ -33,9 +33,9 @@ int main(int argc, char ** argv)
 
     //cudaProfilerStart();
 
-
-    
-
+#ifdef AVX512CUSTOM
+    fprintf(stdout, "[INFO] Using AVX512 intrinsics. If not available, recompile the program after removing -DAVX512CUSTOM in the Makefile\n");
+#endif
     ////////////////////////////////////////////////////////////////////////////////
     // Get info of devices
     ////////////////////////////////////////////////////////////////////////////////
@@ -958,8 +958,12 @@ int main(int argc, char ** argv)
             if(fast == 2)
                 n_hits_found = generate_hits_fast(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             else
+#ifdef AVX512CUSTOM
+                n_hits_found = generate_hits_sensitive_avx512(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
+#else
                 n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency, fast);
-                //n_hits_found = generate_hits_sensitive_avx512(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
+
+#endif
 #ifdef SHOWTIME
             clock_gettime(CLOCK_MONOTONIC, &HD_end);
             time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
@@ -1406,9 +1410,11 @@ int main(int argc, char ** argv)
             if(fast == 2)
                 n_hits_found = generate_hits_fast(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             else
+#ifdef AVX512CUSTOM
+                n_hits_found = generate_hits_sensitive_avx512(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
+#else
                 n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency, fast);
-                //n_hits_found = generate_hits_sensitive_avx512(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
-
+#endif
 #ifdef SHOWTIME
             clock_gettime(CLOCK_MONOTONIC, &HD_end);
             time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;

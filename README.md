@@ -8,6 +8,8 @@ CUDAGECKO requires a CUDA capable device that supports warp shuffle instructions
 
 Known to work with CUDA 10.0 and maxwell devices with compute capabilitiy 5.2
 
+CUDAGECKO uses AVX512 intrinsics by default since these are widely available. If your system does not have support for AVX512 vector operations, please remove the define `-DAVX512CUSTOM` from the `NVIDIAFLAGS` flags and then recompile the binaries as explained below.
+
 ## Installation
 
 Clone the repository and run:
