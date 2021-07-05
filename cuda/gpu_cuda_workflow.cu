@@ -33,6 +33,9 @@ int main(int argc, char ** argv)
 
     //cudaProfilerStart();
 
+
+    
+
     ////////////////////////////////////////////////////////////////////////////////
     // Get info of devices
     ////////////////////////////////////////////////////////////////////////////////
@@ -955,7 +958,8 @@ int main(int argc, char ** argv)
             if(fast == 2)
                 n_hits_found = generate_hits_fast(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             else
-                n_hits_found = generate_hits_sensitive_avx512(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
+                n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency, fast);
+                //n_hits_found = generate_hits_sensitive_avx512(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
 #ifdef SHOWTIME
             clock_gettime(CLOCK_MONOTONIC, &HD_end);
             time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
@@ -970,7 +974,7 @@ int main(int argc, char ** argv)
 
             // Print hits for debug
             //for(i=0; i<n_hits_found; i++){
-            //    fprintf(stdout, "%" PRIu32"\n", dict_x_values[i]);
+            //    fprintf(stdout, "thisHitForDebug %" PRIu64"\n", diagonals[i]);
             //}
             //for(i=0; i<n_hits_found; i++){
                 //printf("%" PRIu64"\n", diagonals[i]);
@@ -1402,7 +1406,8 @@ int main(int argc, char ** argv)
             if(fast == 2)
                 n_hits_found = generate_hits_fast(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             else
-                n_hits_found = generate_hits_sensitive_avx512(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
+                n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency, fast);
+                //n_hits_found = generate_hits_sensitive_avx512(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
 
 #ifdef SHOWTIME
             clock_gettime(CLOCK_MONOTONIC, &HD_end);

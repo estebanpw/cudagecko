@@ -351,8 +351,10 @@ uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * 
                 //hits[n_hits_found].p2 = values_y[curr_id_y];
 
                 // New way
-                diagonals[n_hits_found] = ((( ref_len + (uint64_t) values_x[id_x]) - (uint64_t) values_y[curr_id_y]) << 32) + (uint64_t) values_x[id_x];
+                diagonals[n_hits_found] = ((( (uint64_t) ref_len + (uint64_t) values_x[id_x]) - (uint64_t) values_y[curr_id_y]) << 32) + (uint64_t) values_x[id_x];
                 //printf("2 x %" PRIu32 " y %" PRIu32 " -> %" PRIu64 "\n", values_x[id_x], values_y[curr_id_y], diagonals[n_hits_found]);
+
+                //fprintf(stdout, "thisHitForDebug %" PRIu64 " %" PRIu32 " %" PRIu64"\n", ((( (uint64_t) ref_len + (uint64_t) values_x[id_x])) << 32) + (uint64_t) values_x[id_x], values_y[curr_id_y], diagonals[n_hits_found]);
 
                 ++n_hits_found;
                 ++current_hits;
@@ -360,6 +362,8 @@ uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * 
                 if(n_hits_found == max_hits){ fprintf(stderr, "Reached maximum limit of hits (max %" PRIu64")\n", n_hits_found); }
 
             }
+
+            //printf("thisHitForDebug completed iteration\n");
 
             id_x += step_x;
             current_hits = 0;
@@ -398,7 +402,7 @@ uint32_t generate_hits_sensitive_avx512(uint32_t max_hits, uint64_t * diagonals,
         if(keys_x[id_x] == keys_y[id_y] && values_x[id_x] != 0xFFFFFFFF && values_y[id_y] != 0xFFFFFFFF) {
 
             uint64_t curr_id_y;
-            uint64_t partial_x_diag = ((( ref_len + (uint64_t) values_x[id_x])) << 32) + (uint64_t) values_x[id_x];
+            uint64_t partial_x_diag = ((( (uint64_t) ref_len + (uint64_t) values_x[id_x])) << 32) + (uint64_t) values_x[id_x];
 
             for(curr_id_y = id_y; curr_id_y < items_y; curr_id_y += 1){
 
@@ -415,9 +419,13 @@ uint32_t generate_hits_sensitive_avx512(uint32_t max_hits, uint64_t * diagonals,
             while (current_hits > 0)
             {
                 generate_vectorized_hits(partial_x_diag, &values_y[id_y + (uint64_t) advance], &diagonals[n_hits_found + advance]);
+                //for(uint32_t kk = 0; kk<MIN(8, (uint32_t) current_hits); kk++){
+                //    fprintf(stdout, "thisHitForDebug %" PRIu64 " %" PRIu32 " %" PRIu64"\n", partial_x_diag, values_y[id_y + advance + kk], diagonals[n_hits_found + advance + kk]);
+                //}
                 advance += MIN(8, (uint32_t) current_hits);
                 current_hits -= 8; // 8 are processed at once
             }
+            //printf("thisHitForDebug completed iteration\n");
 
             ++id_x;
             n_hits_found += advance;
@@ -450,11 +458,8 @@ uint32_t generate_hits_sensitive_avx512(uint32_t max_hits, uint64_t * diagonals,
 void generate_vectorized_hits(uint64_t partial_x_diag, uint32_t * values_y, uint64_t * diagonals)
 {
     Vec8uq partial_x(partial_x_diag);
-    Vec8uq partial_y;
-    Vec8uq res;
-    partial_y.load(values_y);
-    partial_y = partial_y << 32;
-    res = partial_x - partial_y;
+    Vec8uq partial_y(values_y[0], values_y[1], values_y[2], values_y[3], values_y[4], values_y[5], values_y[6], values_y[7]);
+    Vec8uq res = partial_x - (partial_y << 32);
     res.store(diagonals);
 
 }
