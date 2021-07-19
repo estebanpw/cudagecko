@@ -23,6 +23,38 @@ __constant__ uint64_t pow4_T[33]={3*1L, 3*4L, 3*16L, 3*64L, 3*256L, 3*1024L, 3*4
 
 //__device__ int printid = 0;
 
+__global__ void kernel_filter_hits_parallel(uint64_t * diagonals_merged, uint32_t ref_len, uint32_t n_hits_found)
+{
+    uint64_t mask_d  = 0xFFFFFFFF00000000; 
+    uint64_t mask_px = 0x00000000FFFFFFFF;
+
+    uint32_t index = blockIdx.x * blockDim.x + threadIdx.x;
+    if(index >= n_hits_found) return;
+
+    uint32_t d_prev, px_prev;
+
+    uint64_t v = diagonals_merged[index];
+    uint32_t d_curr = (uint32_t) ((v & mask_d) >> 32);
+    uint32_t px = (uint32_t) (v & mask_px);
+    uint32_t py = ref_len + px - d_curr;
+    uint64_t res = ((uint64_t) px << (uint64_t) 32) + (uint64_t) py;
+
+    int32_t start = (threadIdx.x < 32) ? 0 : 32;
+    //for(int32_t i=0; i<blockDim.x-1; i++){
+    for(int32_t i=start; i<start+32; i++){
+
+        d_prev  = __shfl_sync(0xFFFFFFFF, d_curr, i);
+        px_prev = __shfl_sync(0xFFFFFFFF, px, i); 
+
+        if(threadIdx.x > i && d_prev == d_curr && px < (px_prev+63)){
+            res = 0xFFFFFFFFFFFFFFFF; // Last diagonal and last hash value means filtered
+            px = 0xFFFFFFFF; // reset the position and diagonal so that it doesnt break other hits
+            d_curr = 0xFFFFFFFF;
+        }
+    }
+    diagonals_merged[index] = res;
+}
+
 __global__ void kernel_filter_hits(uint64_t * diagonals_merged, uint32_t ref_len, uint32_t n_hits_found)
 {
     uint64_t mask_d  = 0xFFFFFFFF00000000; 
@@ -37,11 +69,6 @@ __global__ void kernel_filter_hits(uint64_t * diagonals_merged, uint32_t ref_len
     uint32_t py = ref_len + px - d_curr; //values_y[index]; 
     uint64_t res = ((uint64_t) px << (uint64_t) 32) + (uint64_t) py;
 
-
-    //printf("SEC [%d] py and values y: %u %u\n", py, values_y[index]);
-    //printf("[%d] px and py: %u %u\n", blockIdx.x * 32, px, py);
-
-
     diagonals_merged[index] = res;
 
     for(int i=1; i<32; i++){
@@ -53,8 +80,6 @@ __global__ void kernel_filter_hits(uint64_t * diagonals_merged, uint32_t ref_len
         uint32_t px_next = (uint32_t) (v & mask_px);
         uint32_t py_next = ref_len + px_next - d_next;//values_y[index + i]; 
 
-        //printf("[%d] %" PRIu64 " px_next and py_next: %u %u\n", blockIdx.x * 32 + i, v, px_next, py_next);
-
         if(d_curr != d_next || px_next > (px+63)){
             res = ((uint64_t) px_next << (uint64_t) 32) + (uint64_t) py_next;
             diagonals_merged[index + i] = res;
@@ -64,7 +89,6 @@ __global__ void kernel_filter_hits(uint64_t * diagonals_merged, uint32_t ref_len
         }else{
             diagonals_merged[index + i] = 0xFFFFFFFFFFFFFFFF; // Last diagonal and last hash value means filtered
         }
-    
     }
 }
 

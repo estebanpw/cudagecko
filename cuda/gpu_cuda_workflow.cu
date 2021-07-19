@@ -1081,8 +1081,11 @@ int main(int argc, char ** argv)
 #ifdef SHOWTIME
             clock_gettime(CLOCK_MONOTONIC, &HD_start);
 #endif
-            kernel_filter_hits<<<n_hits_found/(32*32)+1, 32>>>(ptr_device_diagonals, ref_len, n_hits_found);
+            //kernel_filter_hits<<<n_hits_found/(32*32)+1, 32>>>(ptr_device_diagonals, ref_len, n_hits_found);
+            //cudaProfilerStart();
+            kernel_filter_hits_parallel<<<n_hits_found/(64)+1, 64>>>(ptr_device_diagonals, ref_len, n_hits_found);
             ret = cudaDeviceSynchronize();
+            //cudaProfilerStop();
             if(ret != cudaSuccess){ fprintf(stderr, "FILTER HITS failed on query-ref hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
             ret = cudaMemcpy(diagonals, ptr_device_diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
@@ -1105,8 +1108,8 @@ int main(int argc, char ** argv)
 #endif
             
             //for(i=0; i<n_hits_kept; i++){
-                //printf("%" PRIu64"\n", diagonals[i]);
-                //fprintf(stdout, "Frag,%" PRIu32",%" PRIu32",%" PRIu32",%" PRIu32",f,0,32,32,32,1.0,1.0,0,0\n", filtered_hits_x[i], filtered_hits_y[i], filtered_hits_x[i]+32, filtered_hits_y[i]+32);
+            //    printf("GET THIS HIT %" PRIu64"\n", diagonals[i]);
+            //    //fprintf(stdout, "Frag,%" PRIu32",%" PRIu32",%" PRIu32",%" PRIu32",f,0,32,32,32,1.0,1.0,0,0\n", filtered_hits_x[i], filtered_hits_y[i], filtered_hits_x[i]+32, filtered_hits_y[i]+32);
             //}
             //ret = cudaFree(d_temp_storage);
             //ret = cudaFree(device_hits);
@@ -1524,8 +1527,11 @@ int main(int argc, char ** argv)
             clock_gettime(CLOCK_MONOTONIC, &HD_start);
 #endif
 
-            kernel_filter_hits<<<n_hits_found/(32*32)+1, 32>>>(ptr_device_diagonals, ref_len, n_hits_found);
+            //kernel_filter_hits<<<n_hits_found/(32*32)+1, 32>>>(ptr_device_diagonals, ref_len, n_hits_found);
+            //cudaProfilerStart();
+            kernel_filter_hits_parallel<<<n_hits_found/(64)+1, 64>>>(ptr_device_diagonals, ref_len, n_hits_found);
             ret = cudaDeviceSynchronize();
+            //cudaProfilerStop();
             if(ret != cudaSuccess){ fprintf(stderr, "FILTER HITS failed on query-ref-comp hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
             ret = cudaMemcpy(diagonals, ptr_device_diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
