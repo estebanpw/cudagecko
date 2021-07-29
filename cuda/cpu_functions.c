@@ -208,8 +208,6 @@ uint32_t generate_hits_fast(uint32_t max_hits, uint64_t * diagonals, Hit * hits,
     // Si no, solo saldra ruido horizontal o vertical 
 
     uint64_t id_x = 0, id_y = 0, n_hits_found = 0;
-    uint64_t diff_offset = ref_len;
-    uint64_t diag_len = MAX(query_len, ref_len);
     //int64_t last_position_y = -1;
 
     
@@ -232,7 +230,9 @@ uint32_t generate_hits_fast(uint32_t max_hits, uint64_t * diagonals, Hit * hits,
             // Le estoy sumando el diff_offset (i.e. lo mas largo que puede ser la y) para que siempre sean positivos (como x es positivo)
             // pues solo la y resta
             // This is good enough for sequences length up to 2,147,483,648 bp 
-            diagonals[n_hits_found] =  ((diff_offset + (uint64_t) values_x[id_x]) - (uint64_t) values_y[id_y]) * diag_len + (diff_offset + (uint64_t) values_x[id_x]);
+            //diagonals[n_hits_found] =  ((diff_offset + (uint64_t) values_x[id_x]) - (uint64_t) values_y[id_y]) * diag_len + (diff_offset + (uint64_t) values_x[id_x]);
+            // New way
+            diagonals[n_hits_found] = ((( (uint64_t) ref_len + (uint64_t) values_x[id_x]) - (uint64_t) values_y[id_y]) << 32) + (uint64_t) values_x[id_x];
 
             //printf("Matching hash %" PRIu64" with %" PRIu64" @ (%" PRIu64", %" PRIu64")\n", keys_x[id_x], keys_y[id_y], values_x[id_x], values_y[id_y]);
 
