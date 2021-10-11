@@ -23,3 +23,4 @@ void terror(const char * s);
 void Qsort(uint64_t * keys, uint64_t * values, int64_t x, int64_t y);
 uint64_t realign_address(uint64_t address, uint64_t align);
 void find_consecutive_seeds(uint64_t i, uint64_t j, uint64_t * keys_x, uint64_t * keys_y, uint32_t * values_x, uint32_t * values_y, uint32_t items_x, uint32_t items_y, uint64_t * step_x, uint64_t * step_y);
+uint32_t binary_search_keys(uint64_t * keys, uint32_t items, uint64_t target);

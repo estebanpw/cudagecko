@@ -92,6 +92,217 @@ __global__ void kernel_filter_hits(uint64_t * diagonals_merged, uint32_t ref_len
     }
 }
 
+__device__ uint32_t binary_search_hits(uint64_t key_x, uint64_t * hashes_y, uint32_t limit_y)
+{
+    uint32_t l = 0, r = limit_y;
+    while(l < r){
+        uint32_t m = (l + r) >> 1;
+        if(hashes_y[m] < key_x)
+            l = m + 1;
+        else
+            r = m;
+    }
+    return l;
+}
+
+__global__ void kernel_find_leftmost_items(uint64_t * hashes_x, uint32_t * pos_x, uint64_t * hashes_y, uint32_t * pos_y, uint32_t limit_x, uint32_t limit_y)
+{
+    *pos_x = binary_search_hits(0xFFFFFFFFFFFFFFFF, hashes_x, limit_x);
+    *pos_y = binary_search_hits(0xFFFFFFFFFFFFFFFF, hashes_y, limit_y);
+}
+
+__global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t * positions_x, uint32_t * positions_y, 
+    uint64_t * hit_write_section, int32_t mem_block, uint32_t limit_x, uint32_t limit_y, int32_t * error, uint32_t ref_len, uint32_t * hits_log)//, uint64_t * messages)
+{
+    // !!!!!!!!!!!!!
+    // TODO: make the x words also fully aligned to 256 
+    // !!!!!!!!!!!!!
+
+    //uint32_t messageID = 0, messageMAX=1000*1000*10;
+    uint32_t accumulated = blockIdx.x * (uint32_t) mem_block;
+
+    uint32_t batch = (uint32_t) limit_x / gridDim.x;
+    uint32_t word_x_id = blockIdx.x * batch;
+    
+    __shared__ uint64_t cached_keys_x[32]; // Needs to change if blockDim > 32
+    __shared__ uint64_t cached_keys_y[32]; 
+    __shared__ uint32_t cached_pos_x[32];
+    __shared__ uint32_t cached_pos_y[32];
+    //__shared__ uint64_t cached_writes[32];
+
+    uint32_t word_y_id = binary_search_hits(hashes_x[word_x_id], hashes_y, limit_y);
+    //if(threadIdx.x == 0) printf("[%d] I found my hash [%" PRIu64"] [I was looking for %" PRIu64" at p=%u] at p=%u, and i work from [%u to %u]\n", blockIdx.x, hashes_y[word_y_id], hashes_x[word_x_id], word_x_id, word_y_id, word_x_id, word_x_id+batch);
+    
+    uint32_t misaligned = word_y_id % 256;
+    if(misaligned < word_y_id) word_y_id = word_y_id - misaligned; // Make it aligned
+
+    uint32_t i = 0, total_hits = 0;
+    while(i < batch)
+    {
+        cached_keys_x[threadIdx.x] = hashes_x[word_x_id+threadIdx.x];
+        cached_pos_x[threadIdx.x]  = positions_x[word_x_id+threadIdx.x];
+
+        for(uint32_t current_word_x=0; current_word_x<blockDim.x; current_word_x++)
+        {
+            uint64_t partial_diag = (((uint64_t)ref_len + (uint64_t)cached_pos_x[current_word_x]) << 32) + (uint64_t)cached_pos_x[current_word_x];
+
+            uint32_t current_word_y_id = word_y_id;
+            while (current_word_y_id < limit_y)
+            {
+                // Cache current block of y-words
+                cached_keys_y[threadIdx.x] = hashes_y[current_word_y_id+threadIdx.x];
+                cached_pos_y[threadIdx.x]  = positions_y[current_word_y_id+threadIdx.x];
+                uint32_t hit = 0;
+                // Match keys
+                
+                //if(cached_pos_x[current_word_x] != 0xFFFFFFFF && cached_pos_y[threadIdx.x] != 0xFFFFFFFF) // This IF is no longer necessary because of leftmost searches
+                if(cached_keys_x[current_word_x] == cached_keys_y[threadIdx.x])
+                {
+                    hit = 1;
+                    hit_write_section[accumulated + threadIdx.x] = partial_diag - (((uint64_t) cached_pos_y[threadIdx.x]) << 32 );
+                }
+                // Distribute number of matches
+                for (int offset = 16; offset > 0; offset = offset >> 1)
+                    hit += __shfl_down_sync(0xFFFFFFFF, hit, offset);
+                hit = __shfl_sync(0xFFFFFFFF, hit, 0);
+
+                total_hits += hit;
+                accumulated += hit;
+                if(accumulated >= (blockIdx.x+1) * (uint32_t) mem_block) { *error = - blockIdx.x; return; }
+                
+
+                if(cached_keys_x[current_word_x] < cached_keys_y[0])
+                {
+                    if(current_word_x < blockDim.x-1 && cached_keys_x[current_word_x+1] > cached_keys_x[current_word_x]
+                        && cached_keys_x[current_word_x+1] >= cached_keys_y[0]){
+                            word_y_id = current_word_y_id;
+                        }
+                    break;
+                }
+                if(cached_keys_x[current_word_x] > cached_keys_y[0]){ // this condition has increased performance
+                    word_y_id = current_word_y_id;
+                }
+                current_word_y_id += blockDim.x;
+
+                /*
+                // Very fast on some, on others it goes very slow [T3]
+                // I know it is somehow related to length, but not to number of hits (on bosta it goes well, despite having more hits than galga)
+                // so it must be linked to the actual distribution of hits
+                if(cached_keys_x[current_word_x] < cached_keys_y[0])
+                {
+                    if(current_word_x < blockDim.x-1 && cached_keys_x[current_word_x+1] > cached_keys_x[current_word_x]
+                        && cached_keys_x[current_word_x+1] >= cached_keys_y[0]){
+                            word_y_id = current_word_y_id;
+                            if(threadIdx.x == 0 && messageID<messageMAX) messages[messageID++] = (((uint64_t)0 << 32) | word_y_id); //printf("%d Strong y increment %d!\n", messageID++, word_y_id);
+                        }
+                    if(threadIdx.x == 0 && messageID<messageMAX) messages[messageID++] = (((uint64_t)1 << 32) | word_x_id); //printf("%d Increment x %d!\n", messageID++, word_x_id);
+                    break;
+                }
+                if(cached_keys_x[current_word_x] > cached_keys_y[0]){ // this condition has increased performance
+                    word_y_id = current_word_y_id;
+                    if(threadIdx.x == 0 && messageID<messageMAX) messages[messageID++] = (((uint64_t)4 << 32) | word_y_id); //printf("%d Major Strong y increment %d!\n", messageID++, word_x_id);
+                }
+
+                if(threadIdx.x == 0 && messageID<messageMAX) messages[messageID++] = (((uint64_t)2 << 32) | current_word_y_id); //printf("%d Basic y increment %d!\n", messageID++, current_word_y_id);
+                current_word_y_id += blockDim.x;
+                */
+
+                /*
+                // A bit faster because of lesser ifs (equivalent to the next one) [T2]
+                if(cached_keys_x[current_word_x] <= cached_keys_y[0])
+                    break;
+                current_word_y_id += blockDim.x;
+                */
+
+                /*
+                // Slow but perfect [T1]
+                if(hit == blockDim.x)
+                    current_word_y_id += blockDim.x;
+                else if(hit < blockDim.x && cached_keys_x[current_word_x] > cached_keys_y[0])
+                    current_word_y_id += blockDim.x;
+                else if(cached_keys_x[current_word_x] > cached_keys_y[0])
+                {
+                    word_y_id += blockDim.x;
+                    current_word_y_id = word_y_id; 
+                }
+                else
+                    break;
+                */ 
+            }
+
+        }
+        //if(threadIdx.x == 0 && messageID<messageMAX) messages[messageID++] = (((uint64_t)3 << 32) | word_x_id); //printf("%d Fetched next x block %d!\n", messageID++, word_x_id);
+        word_x_id += blockDim.x;
+        i += blockDim.x;
+    }
+
+    if(threadIdx.x == 0) hits_log[blockIdx.x] = (uint32_t) total_hits;
+    //if(threadIdx.x == 0) printf("block %d finished\n", blockIdx.x);
+
+    /*
+    int32_t word_x_id = blockIdx.x;
+    int32_t word_y_id = 0;
+    int32_t current_word_y_id = word_y_id;
+
+    int32_t accumulated = blockIdx.x * mem_block;
+    int32_t highest_winner = 0, total_hits = 0;
+
+    // Loop to generate hits
+    while(word_x_id < limit_x && word_y_id + threadIdx.x < limit_y) //limit_x)
+    {
+
+        if(positions_x[word_x_id] == 0xFFFFFFFF || positions_y[word_y_id] == 0xFFFFFFFF) break;
+
+        // One read to check whether we have to update x
+        if(hashes_x[word_x_id] < hashes_y[word_y_id]){
+            word_x_id += gridDim.x;
+        
+        }else if(hashes_x[word_x_id] > hashes_y[word_y_id]){
+            //++word_y_id;
+            word_y_id += max(1, highest_winner);
+            //word_y_id += blockDim.x;
+        }else{
+
+            current_word_y_id = word_y_id;
+
+            while(hashes_x[word_x_id] == hashes_y[current_word_y_id]){
+            
+                if(hashes_x[word_x_id] == hashes_y[current_word_y_id+threadIdx.x]){
+                    // Perform the write
+                    hit_write_section[accumulated + threadIdx.x] = (((uint64_t)ref_len + (uint64_t)positions_x[word_x_id] - (uint64_t)positions_y[current_word_y_id+threadIdx.x]) << 32 ) + (uint64_t)positions_x[word_x_id];
+                    highest_winner = threadIdx.x + 1;
+                }else{
+                    highest_winner = 0;
+                }
+
+                // Distribute highest threadIdx.x among threads
+                
+                for (int offset = 16; offset > 0; offset = offset >> 1)
+                    highest_winner += __shfl_down_sync(0xFFFFFFFF, highest_winner, offset);
+
+                highest_winner = __shfl_sync(0xFFFFFFFF, highest_winner, 0);
+                    
+                accumulated += highest_winner;
+                total_hits += highest_winner;
+
+                if(accumulated >= (blockIdx.x+1) * mem_block) { *error = -1; return; }
+
+                current_word_y_id += blockDim.x;
+            }
+            word_x_id += gridDim.x;
+        }
+
+        //if(threadIdx.x == 0) printf("Thr Id %d from block %d ::: Outcome: %d -> indices [%d] [%d] (hits so far %d)\n", threadIdx.x, blockIdx.x, highest_winner, word_x_id, word_y_id, total_hits);
+
+    }
+
+    if(threadIdx.x == 0) hits_log[blockIdx.x] = (uint32_t) total_hits;
+
+    */
+    
+
+}
+
 __device__ void left_extend(int32_t warp_pos_x_left, int32_t warp_pos_y_left, uint32_t x_seq_off, uint32_t y_seq_off, uint32_t * best_offset_left, const char * seq_x, const char * seq_y)
 {
 
@@ -651,7 +862,7 @@ __global__ void kernel_register_fast_hash_rotational(uint64_t * hashes, uint64_t
 __global__ void kernel_index_global32(uint64_t * hashes, uint32_t * positions, const char * sequence, uint32_t offset, uint32_t seq_lim) {
 
     uint64_t hash = 0, k = 0;
-    uint64_t bad = 0xFFFFFFFFFFFFFFFF;
+    uint64_t bad = 0;
     
     if(threadIdx.x + 32 + blockIdx.x * blockDim.x > seq_lim) return;
 
@@ -675,7 +886,7 @@ __global__ void kernel_index_global32(uint64_t * hashes, uint32_t * positions, c
         if(c == 'C') hash += pow4[k];
         if(c == 'G') hash += pow4_G[k];
         if(c == 'T') hash += pow4_T[k];
-        if(c == 'N') bad = 0;
+        if(c == 'N') bad = 0xFFFFFFFFFFFFFFFF;
         
 
             
@@ -689,8 +900,8 @@ __global__ void kernel_index_global32(uint64_t * hashes, uint32_t * positions, c
 
     }
     // [0 - 32] * [0-N]* [32]
-    hashes[threadIdx.x + blockIdx.x * blockDim.x] = hash & bad;
-    positions[threadIdx.x + blockIdx.x * blockDim.x] = (threadIdx.x + blockIdx.x * blockDim.x + offset) | (~bad);
+    hashes[threadIdx.x + blockIdx.x * blockDim.x] = hash | bad;//& bad; // reconsider changing to | ~bad
+    positions[threadIdx.x + blockIdx.x * blockDim.x] = (threadIdx.x + blockIdx.x * blockDim.x + offset) | bad;
 }
 
 __global__ void kernel_index_global32_advanced(uint64_t * hashes, uint32_t * positions, const uchar4 * sequence, uint32_t offset) {

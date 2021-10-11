@@ -16,6 +16,7 @@
 
 void print_header(FILE * out, uint32_t query_len, uint32_t ref_len);
 uint64_t memory_allocation_chooser(uint64_t total_memory);
+char * dump_memory_region(char * ptr_pointer, uint64_t size);
 
 int main(int argc, char ** argv)
 {
@@ -619,7 +620,7 @@ int main(int argc, char ** argv)
         address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
 
         uint32_t * ptr_values = (uint32_t *) (base_ptr + address_checker); 
-        address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
+        address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 8);
         
 
         fprintf(stdout, "[EXECUTING] Running split %d -> (%d%%)[%u,%u]\n", split, (int)((100*(uint64_t)pos_in_query)/(uint64_t)query_len), pos_in_query, pos_in_ref);
@@ -631,29 +632,21 @@ int main(int argc, char ** argv)
         // Run kmers for query
         ////////////////////////////////////////////////////////////////////////////////
         
-        // Load sequence chunk into ram
-
-        //ret = cudaMemcpy(seq_dev_mem, &query_seq_host[pos_in_query], items_read_x, cudaMemcpyHostToDevice);
+        // Load sequence chunk into ram 
         ret = cudaMemcpy(ptr_seq_dev_mem, &query_seq_host[pos_in_query], items_read_x, cudaMemcpyHostToDevice);
         if(ret != cudaSuccess){ fprintf(stderr, "Could not copy query sequence to device. Error: %d\n", ret); exit(-1); }
 
-        // Run kmers
+        // Initialize space
         ret = cudaMemset(ptr_keys, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
         ret = cudaMemset(ptr_values, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
         
-                
-        //number_of_blocks = (items_read_x - KMER_SIZE + 1)/threads_number;
-        //kernel_index_global32<<<number_of_blocks, threads_number>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_query);
-
-
-    
+        
         number_of_blocks = (items_read_x - KMER_SIZE + 1)/(64) + 1;
 
 
         if(number_of_blocks != 0)
         {
             kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_query, items_read_x);
-            //kernel_index_global32_advanced<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, (uchar4 *) ptr_seq_dev_mem, pos_in_query);
         
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on query. Error: %d\n", ret); exit(-1); }
@@ -662,9 +655,6 @@ int main(int argc, char ** argv)
         {
             fprintf(stdout, "[WARNING] Zero blocks for query words\n");
         }
-
-        //cudaFree(seq_dev_mem);
-        //cudaFree(data_mem);
 
         // FOR DEBUG
         // Copy kmers to local
@@ -710,36 +700,7 @@ int main(int argc, char ** argv)
 #ifdef SHOWTIME
         clock_gettime(CLOCK_MONOTONIC, &HD_start);
 #endif        
-        //address_checker = realign_address(address_checker, 8);
-        //uint64_t * ptr_keys_buf = (uint64_t *) (base_ptr + address_checker);
-        //address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
-
-        //uint32_t * ptr_values_buf = (uint32_t *) (base_ptr + address_checker); // Each alloc adds on top of the previous one
-        //address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
-
-        //cub::DoubleBuffer<uint64_t> d_keys(keys, keys_buf);
-        //cub::DoubleBuffer<uint32_t> d_values(values, values_buf);
-
-        //cub::DoubleBuffer<uint64_t> d_keys(ptr_keys, ptr_keys_buf);
-        //cub::DoubleBuffer<uint32_t> d_values(ptr_values, ptr_values_buf);
-
-        //size_t temp_storage_bytes = 0;
-        //cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys, d_values, items_read_x);
-        //ret = cudaDeviceSynchronize();
-        //if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (1). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
-
-        // Allocate temporary storage
-        //ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
-        //if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for words sorting (1). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
-
-        // Remove this for  debug
-        //read_kmers(query_len, query_seq_host, dict_x_keys, dict_x_values);
-        //ret = cudaMemcpy(keys, dict_x_keys, items_read_x*sizeof(uint64_t), cudaMemcpyHostToDevice);
-        //ret = cudaMemcpy(values, dict_x_values, items_read_x*sizeof(uint64_t), cudaMemcpyHostToDevice);
-    
-        //cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys, d_values, items_read_x);
-        //ret = cudaDeviceSynchronize();
-        //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on query. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+        
 
 
         mergesort(ptr_keys, ptr_values, items_read_x, mgpu::less_t<uint64_t>(), context);
@@ -747,19 +708,18 @@ int main(int argc, char ** argv)
         if(ret != cudaSuccess){ fprintf(stderr, "MERGESORT sorting failed on query. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
         
 
-        // Download sorted kmers
-        ret = cudaMemcpyAsync(dict_x_keys, ptr_keys, items_read_x*sizeof(uint64_t), cudaMemcpyDeviceToHost, streams[0]);
-        if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (1). Error: %d\n", ret); exit(-1); }
-        ret = cudaMemcpyAsync(dict_x_values, ptr_values, items_read_x*sizeof(uint32_t), cudaMemcpyDeviceToHost, streams[1]);
-        if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (2). Error: %d\n", ret); exit(-1); }
+        // Download sorted kmers [ No need to download because of hits processing ###]
+        //ret = cudaMemcpyAsync(dict_x_keys, ptr_keys, items_read_x*sizeof(uint64_t), cudaMemcpyDeviceToHost, streams[0]);
+        //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (1). Error: %d\n", ret); exit(-1); }
+        //ret = cudaMemcpyAsync(dict_x_values, ptr_values, items_read_x*sizeof(uint32_t), cudaMemcpyDeviceToHost, streams[1]);
+        //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (2). Error: %d\n", ret); exit(-1); }
 
         // Print hits for debug
         //for(i=0; i<items_read_x; i++){
         //    fprintf(out, "%" PRIu64"\n", dict_x_values[i]);
         //}
 
-        //ret = cudaFree(d_temp_storage);
-        //if(ret != cudaSuccess){ fprintf(stderr, "Bad free of temp storage (1): %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+        
 #ifdef SHOWTIME
         clock_gettime(CLOCK_MONOTONIC, &HD_end);
         time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
@@ -792,6 +752,13 @@ int main(int argc, char ** argv)
         if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pool memory in device. Error: %d\n", ret); exit(-1); }
         */
 
+        // These definitions are for the processing of hits - reused in reference and query
+        uint64_t * ptr_device_diagonals;
+        int32_t * ptr_device_error;
+        uint32_t * ptr_hits_log;
+        uint64_t * ptr_keys_2;
+        uint32_t * ptr_values_2;
+
         while(pos_in_ref < ref_len){
 
             ////////////////////////////////////////////////////////////////////////////////
@@ -812,14 +779,15 @@ int main(int argc, char ** argv)
 
             // ## POINTER SECTION 3
             ptr_seq_dev_mem = &data_mem[0];
-            base_ptr = ptr_seq_dev_mem;
-            address_checker = realign_address(words_at_once, 8);
+            //base_ptr = ptr_seq_dev_mem; // Currently set at the previous realignment in the query word generation
+            //address_checker = realign_address(words_at_once, 8); // Currently set at the previous realignment in the query word generation
 
-            ptr_keys = (uint64_t *) (base_ptr + address_checker); // We have to realign because of the arbitrary length of the sequence chars
+            //address_checker = realign_address(address_checker + words_at_once, 8);
+            ptr_keys_2 = (uint64_t *) (base_ptr + address_checker); // We have to realign because of the arbitrary length of the sequence chars
             address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
 
-            ptr_values = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
+            ptr_values_2 = (uint32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 8);
             
 
             // Load sequence chunk into ram
@@ -827,19 +795,15 @@ int main(int argc, char ** argv)
             if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device. Error: %d\n", ret); exit(-1); }
 
             // Run kmers
-            ret = cudaMemset(ptr_keys, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
-            ret = cudaMemset(ptr_values, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
-            //number_of_blocks = (((items_read_y - KMER_SIZE + 1)) / (threads_number*4)); 
-            //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
+            ret = cudaMemset(ptr_keys_2, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
+            ret = cudaMemset(ptr_values_2, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
+            
             
             number_of_blocks = ((items_read_y - KMER_SIZE + 1))/(64) + 1;
             if(number_of_blocks != 0)
             {
 
-                kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref, items_read_y);
-            
-                //number_of_blocks = ((items_read_y - KMER_SIZE + 1))/threads_number;
-                //kernel_index_global32<<<number_of_blocks, threads_number>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref);
+                kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys_2, ptr_values_2, ptr_seq_dev_mem, pos_in_ref, items_read_y);
                 ret = cudaDeviceSynchronize();
                 if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on ref. Error: %d\n", ret); exit(-1); }
 
@@ -857,6 +821,8 @@ int main(int argc, char ** argv)
             time_seconds = 0;
             time_nanoseconds = 0;
 #endif 
+
+            
 
 
             //cudaFree(seq_dev_mem);
@@ -905,21 +871,18 @@ int main(int argc, char ** argv)
             //ret = cudaDeviceSynchronize();
             //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on ref. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
-            mergesort(ptr_keys, ptr_values, items_read_y, mgpu::less_t<uint64_t>(), context);
+            mergesort(ptr_keys_2, ptr_values_2, items_read_y, mgpu::less_t<uint64_t>(), context);
 
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "MODERNGPU sorting failed on ref words. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
 
 
-            // Download sorted reference kmers
-            ret = cudaMemcpy(dict_y_keys, ptr_keys, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
-            if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (3). Error: %d\n", ret); exit(-1); }
-            ret = cudaMemcpy(dict_y_values, ptr_values, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
-            if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (4). Error: %d\n", ret); exit(-1); }
-
-            //ret = cudaFree(d_temp_storage);
-            //if(ret != cudaSuccess){ fprintf(stderr, "Bad free of temp storage (2): %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+            // Download sorted reference kmers [ No download of kmers because of hits processing in gpu ]
+            //ret = cudaMemcpy(dict_y_keys, ptr_keys, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (3). Error: %d\n", ret); exit(-1); }
+            //ret = cudaMemcpy(dict_y_values, ptr_values, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (4). Error: %d\n", ret); exit(-1); }
 
             pos_in_ref += words_at_once;
 #ifdef SHOWTIME
@@ -945,6 +908,13 @@ int main(int argc, char ** argv)
             //Qsort(dict_y_keys, dict_y_values, 0, (int64_t) ref_len);
             //for(i=0; i<words_at_once; i++) printf("%"  PRIu64" %" PRIu64"\n", dict_y_keys[i], dict_y_values[i]);
 
+            /*
+            uint64_t * keysX1 = (uint64_t *) dump_memory_region((char *)ptr_keys, words_at_once * sizeof(uint64_t));
+            uint64_t * keysX2 = (uint64_t *) dump_memory_region((char *)ptr_keys_2, words_at_once * sizeof(uint64_t));
+            uint32_t * valuesX1 = (uint32_t *) dump_memory_region((char *)ptr_values, words_at_once * sizeof(uint32_t));
+            uint32_t * valuesX2 = (uint32_t *) dump_memory_region((char *)ptr_values_2, words_at_once * sizeof(uint32_t));
+            for(i=0; i<words_at_once; i++) fprintf(stdout, "thisKeysXForDebug %" PRIu64" %" PRIu64" -> (%" PRIu32", %" PRIu32" )\n", keysX1[i], keysX2[i], valuesX1[i], valuesX2[i]);
+            */
             
             //cudaFree(keys);
             //cudaFree(values);
@@ -954,16 +924,125 @@ int main(int argc, char ** argv)
             clock_gettime(CLOCK_MONOTONIC, &HD_start);
 #endif
 
-            uint32_t n_hits_found;
+            uint32_t n_hits_found = 0;
             if(fast == 2)
-                n_hits_found = generate_hits_fast(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
-            else
-#ifdef AVX512CUSTOM
-                n_hits_found = generate_hits_sensitive_avx512(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
-#else
-                n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency, fast);
+                n_hits_found = generate_hits_fast(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);     
 
-#endif
+//#ifdef AVX512CUSTOM
+//                n_hits_found = generate_hits_sensitive_avx512(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
+//#else
+//                n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency, fast);
+//#endif
+            uint32_t n_blocks_hits = 1024;//items_read_x / 128;
+
+            // Save memory for hits
+            //address_checker = 0;
+            //base_ptr = &data_mem[0]; // Keep building on top of what we have
+            address_checker = realign_address(address_checker, 8);
+            ptr_device_diagonals = (uint64_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint64_t), 8);
+
+            ptr_device_error = (int32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + sizeof(int32_t), 4);
+
+            ptr_hits_log = (uint32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + sizeof(uint32_t) * n_blocks_hits, 4);
+
+            // Set error status to one
+            ret = cudaMemset(ptr_device_error, 0x00000001, sizeof(int32_t));
+            
+            /////////////////// DEBUG MESSAGES INFO
+            /*
+            uint32_t message_sizes = 1000*1000*10;
+            address_checker = realign_address(address_checker + sizeof(uint32_t) * n_blocks_hits, 8);
+            uint64_t * ptr_messages_log = (uint64_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + sizeof(uint64_t) * message_sizes, 4);
+            cudaMemset(ptr_messages_log, 0x00000000, sizeof(uint64_t) * message_sizes);
+            */
+            //////////////////// END 
+
+            uint64_t mem_block = (max_hits)/n_blocks_hits;
+            fprintf(stdout, "-----DEBUG size of mem block ==:> %" PRIu64 "\n", mem_block * sizeof(uint64_t));
+
+            uint32_t * ptr_leftmost_key_x = (uint32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + sizeof(uint32_t), 4);
+            uint32_t * ptr_leftmost_key_y = (uint32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + sizeof(uint32_t), 4);
+
+            kernel_find_leftmost_items<<<1, 1>>>(ptr_keys, ptr_leftmost_key_x, ptr_keys_2, ptr_leftmost_key_y, items_read_x, items_read_y);
+            ret = cudaDeviceSynchronize();
+            uint32_t leftmost_key_x, leftmost_key_y;
+            if(ret != cudaSuccess){ fprintf(stderr, "Error searching true leftmost elements on device. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(&leftmost_key_x, ptr_leftmost_key_x, sizeof(uint32_t), cudaMemcpyDeviceToHost);
+            if(ret != cudaSuccess){ fprintf(stderr, "Downloading leftmost element X. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(&leftmost_key_y, ptr_leftmost_key_y, sizeof(uint32_t), cudaMemcpyDeviceToHost);
+            if(ret != cudaSuccess){ fprintf(stderr, "Downloading leftmost element Y. Error: %d\n", ret); exit(-1); }
+
+            printf("Leftmost elements are: %u, %u out of [%u, %u]\n", leftmost_key_x, leftmost_key_y, items_read_x, items_read_y);
+
+            //cudaProfilerStart();
+            kernel_hits<<<n_blocks_hits, 32>>>(ptr_keys, ptr_keys_2, ptr_values, ptr_values_2, ptr_device_diagonals, (int32_t) mem_block, 
+                leftmost_key_x, leftmost_key_y, ptr_device_error, ref_len, ptr_hits_log);//, ptr_messages_log);
+
+            //cudaProfilerStop();
+            ret = cudaDeviceSynchronize();
+
+            if(ret != cudaSuccess){ fprintf(stderr, "Error generating hits on device. Error: %d\n", ret); exit(-1); }
+            int32_t device_error;
+            ret = cudaMemcpy(&device_error, ptr_device_error, sizeof(int32_t), cudaMemcpyDeviceToHost);
+            if(ret != cudaSuccess){ fprintf(stderr, "Downloading error status on hits generation. Error: %d\n", ret); exit(-1); }
+            printf("debug from error hits : %d\n", device_error);
+            if(device_error <= 0) { fprintf(stderr, "Error generating hits on device. Error: %d\n", device_error); exit(-1); }
+
+            
+
+            uint32_t * hits_log = (uint32_t *) malloc(n_blocks_hits*sizeof(uint32_t)); memset(hits_log, 0x00000000, n_blocks_hits*sizeof(uint32_t));
+            ret = cudaMemcpy(hits_log, ptr_hits_log, sizeof(uint32_t)*n_blocks_hits, cudaMemcpyDeviceToHost);
+            for(i=0; i<n_blocks_hits; i++) { n_hits_found += hits_log[i]; }
+
+            free(hits_log);
+
+            //////////////////// DEBUG MESSAGES INFO PART 2
+            /*
+            uint64_t * messages_log = (uint64_t *) dump_memory_region((char *)ptr_messages_log, message_sizes * sizeof(uint64_t));
+            uint32_t coord_tracker_x = 0, coord_tracker_current_x = 0, coord_tracker_y = 0, coord_tracker_current_y = 0;
+            printf("\t[CoordsLog] X:%u\t Y:%u\t cY:%u\n", coord_tracker_x, coord_tracker_y=coord_tracker_current_y, coord_tracker_current_y);
+            for(i=0; i<message_sizes; i++){
+                uint32_t msg_id = (uint32_t) (messages_log[i] >> 32);
+                uint32_t msg_ct = (uint32_t) (messages_log[i] & 0x00000000FFFFFFFF);
+                printf("Message number %d with id %d:\n", i, msg_id);
+                switch(msg_id){
+                    case 0: { printf("\t[CoordsLog] X:%u\t Y:%u\t cX:%u\t cY:%u\t", coord_tracker_x, coord_tracker_y=coord_tracker_current_y, coord_tracker_current_x, coord_tracker_current_y); printf("\tMinor Strong y increment %d!\n", msg_ct); }
+                    break;
+                    case 1: { printf("\t[CoordsLog] X:%u\t Y:%u\t cX:%u\t cY:%u\t", coord_tracker_x, coord_tracker_y, ++coord_tracker_current_x, coord_tracker_current_y=coord_tracker_y); printf("\tAdvance x %d!\n", msg_ct);}
+                    break;
+                    case 2: { printf("\t[CoordsLog] X:%u\t Y:%u\t cX:%u\t cY:%u\t", coord_tracker_x, coord_tracker_y, coord_tracker_current_x, coord_tracker_current_y+=32); printf("\tBasic y increment %d!\n", msg_ct);}
+                    break;
+                    case 3: { coord_tracker_x+=32; printf("\t[CoordsLog] X:%u\t Y:%u\t cX:%u\t cY:%u\t", coord_tracker_x, coord_tracker_y=coord_tracker_current_y, coord_tracker_current_x=coord_tracker_x, coord_tracker_current_y=coord_tracker_y); printf("\tFetched next x block %d!\n", msg_ct);} 
+                    break;
+                    case 4: {  printf("\t[CoordsLog] X:%u\t Y:%u\t cX:%u\t cY:%u\t", coord_tracker_x, coord_tracker_y=coord_tracker_current_y, coord_tracker_current_x, coord_tracker_current_y); printf("\tMajor Strong y increment %d!\n", msg_ct); }
+                    break;
+                }
+                if(i > 0 && msg_ct == 0x00000000 && msg_id == 0x00000000) break;
+            }
+            */
+            
+
+            //////////////////// END 2
+
+            // Download data
+            /*
+            uint64_t * keysX1 = (uint64_t *) dump_memory_region((char *)ptr_keys, words_at_once * sizeof(uint64_t));
+            uint64_t * keysX2 = (uint64_t *) dump_memory_region((char *)ptr_keys_2, words_at_once * sizeof(uint64_t));
+            uint32_t * valuesX1 = (uint32_t *) dump_memory_region((char *)ptr_values, words_at_once * sizeof(uint32_t));
+            uint32_t * valuesX2 = (uint32_t *) dump_memory_region((char *)ptr_values_2, words_at_once * sizeof(uint32_t));
+            for(i=0; i<max(items_read_x, items_read_y); i++){ if(valuesX1[i] == 0xFFFFFFFF || valuesX2[i] == 0xFFFFFFFF) break; fprintf(stdout, "thisKeysXForDebug %" PRIu64" %" PRIu64" -> (%" PRIu32", %" PRIu32" ) compare: %d\n", keysX1[i], keysX2[i], valuesX1[i], valuesX2[i], (keysX1[i] < keysX2[i]) ? (-1) : ((keysX1[i] == keysX2[i])? (0): (1))  ); }
+            */
+            //uint64_t * get_my_hits = (uint64_t *) dump_memory_region((char *)ptr_device_diagonals, n_hits_found * sizeof(uint64_t));
+            //for(i=0; i<n_hits_found; i++) fprintf(stdout, "thisHitForDebug %" PRIu64", %" PRIu64", %" PRIu64"\n", get_my_hits[i], get_my_hits[i], get_my_hits[i]);
+            
+            
+
 #ifdef SHOWTIME
             clock_gettime(CLOCK_MONOTONIC, &HD_end);
             time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
@@ -974,6 +1053,7 @@ int main(int argc, char ** argv)
             time_nanoseconds = 0;
             fprintf(stdout, "[INFO] Generated %" PRIu32" hits on split %d -> (%d%%)[%u,%u]{%u,%u}\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len), pos_in_query, pos_in_ref, items_read_x, items_read_y);
 #endif 
+
 
 
             // Print hits for debug
@@ -1005,67 +1085,21 @@ int main(int argc, char ** argv)
 #ifdef SHOWTIME
             clock_gettime(CLOCK_MONOTONIC, &HD_start);
 #endif
-            address_checker = 0;
-            base_ptr = &data_mem[0];
-            address_checker = realign_address(address_checker, 8);
-            uint64_t * ptr_device_diagonals = (uint64_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + max_hits * sizeof(uint64_t), 4);
-
-            //uint64_t * ptr_device_diagonals_buf = (uint64_t *) (base_ptr + address_checker);
+            //address_checker = 0;
+            //base_ptr = &data_mem[0];
+            //address_checker = realign_address(address_checker, 8);
+            //uint64_t * ptr_device_diagonals = (uint64_t *) (base_ptr + address_checker);
             //address_checker = realign_address(address_checker + max_hits * sizeof(uint64_t), 4);
 
-            //uint32_t * ptr_device_hits = (uint32_t *) (base_ptr + address_checker);
-            //address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
-
-            //uint32_t * ptr_device_hits_buf = (uint32_t *) (base_ptr + address_checker);
-            //address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
-            
-
-            // We will actually sort the diagonals with associated values 0,1,2... to n and use these to index the hits array
-            // Not anymore: just leverage work from the filter kernel by directly including the y values
-            //ret = cudaMemcpy(ptr_device_hits, ascending_numbers, n_hits_found*sizeof(uint32_t), cudaMemcpyHostToDevice);
-            //if(ret != cudaSuccess){ fprintf(stderr, "Uploading forward device hits. Error: %d\n", ret); exit(-1); }
-
-            ret = cudaMemcpy(ptr_device_diagonals, diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyHostToDevice);
-            if(ret != cudaSuccess){ fprintf(stderr, "Uploading device diagonals. Error: %d\n", ret); exit(-1); }
-
-            //cub::DoubleBuffer<uint64_t> d_diagonals(ptr_device_diagonals, ptr_device_diagonals_buf);
-            //cub::DoubleBuffer<uint32_t> d_hits(ptr_device_hits, ptr_device_hits_buf);
-
-            //d_temp_storage = NULL;
-            //temp_storage_bytes = 0;
-            //cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_diagonals, d_hits, n_hits_found);
-            //ret = cudaDeviceSynchronize();
-            //if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (3). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
-
-            // Allocate temporary storage
-            //ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
-            //if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for hits sorting (1). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
-            
-            //cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_diagonals, d_hits, n_hits_found);
-            //ret = cudaDeviceSynchronize();
-            //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
-           
+            // [ No need to recopy because of hits processing ]
+            //ret = cudaMemcpy(ptr_device_diagonals, diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyHostToDevice);
+            //if(ret != cudaSuccess){ fprintf(stderr, "Uploading device diagonals. Error: %d\n", ret); exit(-1); }
 
             mergesort(ptr_device_diagonals, n_hits_found, mgpu::less_t<uint64_t>(), context);
 
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "MODERNGPU sorting failed on query-ref hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
-
-
-            // Download hits (actually just number indices)
-            // This is unused anymore - now only the sorted diagonals matter
-            //ret = cudaMemcpy(indexing_numbers, ptr_device_hits, n_hits_found*sizeof(uint32_t), cudaMemcpyDeviceToHost);
-            //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device hits. Error: %d\n", ret); exit(-1); }
-
-            //ret = cudaMemcpy(diagonals, ptr_device_diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
-            //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device diagonals. Error: %d\n", ret); exit(-1); }
-
-            //
-            //for(i=0; i<n_hits_found; i++){
-            //    fprintf(stdout, "%" PRIu32" %" PRIu32"\n", hits[indexing_numbers[i]].p1, hits[indexing_numbers[i]].p2);
-            //}
 #ifdef SHOWTIME
             clock_gettime(CLOCK_MONOTONIC, &HD_end);
             time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
@@ -1257,6 +1291,8 @@ int main(int argc, char ** argv)
 
         }
 
+        exit(0);
+
         // Restart the reference for every block in query
         pos_in_ref = 0;
 
@@ -1285,16 +1321,17 @@ int main(int argc, char ** argv)
 #ifdef SHOWTIME
             clock_gettime(CLOCK_MONOTONIC, &HD_start);
 #endif
-            address_checker = 0;
+            // We will give it the spot of the reference kmers/keys
+            //address_checker = 0;
             base_ptr = &data_mem[0];
             ptr_seq_dev_mem = (char *) (base_ptr);
-            address_checker = realign_address(address_checker + words_at_once, 8);
+            //address_checker = realign_address(address_checker + words_at_once, 8);
 
-            ptr_keys = (uint64_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
+            //ptr_keys = (uint64_t *) (base_ptr + address_checker);
+            //address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
 
-            ptr_values = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
+            //ptr_values = (uint32_t *) (base_ptr + address_checker);
+            //address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
 
 
             // Load sequence chunk into ram
@@ -1302,19 +1339,15 @@ int main(int argc, char ** argv)
             if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device reversed. Error: %d\n", ret); exit(-1); }
 
             // Run kmers
-            ret = cudaMemset(ptr_keys, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
-            ret = cudaMemset(ptr_values, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
-            //number_of_blocks = (((items_read_y - KMER_SIZE + 1)) / (threads_number*4)); 
-            //kernel_register_fast_hash_rotational<<<number_of_blocks, threads_number>>>(keys, values, seq_dev_mem, pos_in_ref);
+            ret = cudaMemset(ptr_keys_2, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
+            ret = cudaMemset(ptr_values_2, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
+            
             
             number_of_blocks = ((items_read_y - KMER_SIZE + 1))/64 + 1;
 
             if(number_of_blocks != 0)
             {
-                kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref, items_read_y);
-                
-                //number_of_blocks = ((items_read_y - KMER_SIZE + 1))/threads_number;
-                //kernel_index_global32<<<number_of_blocks, threads_number>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_ref);
+                kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys_2, ptr_values_2, ptr_seq_dev_mem, pos_in_ref, items_read_y);
     
                 ret = cudaDeviceSynchronize();
                 if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on ref reversed. Error: %d\n", ret); exit(-1); }
@@ -1336,55 +1369,18 @@ int main(int argc, char ** argv)
             // Sort reference FORWARD kmers BUT REVERSED !
             ////////////////////////////////////////////////////////////////////////////////
 
-            //ret = cudaMalloc(&keys_buf, words_at_once * sizeof(uint64_t));
-            //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (3). Error: %d\n", ret); exit(-1); }
-            //ret = cudaMalloc(&values_buf, words_at_once * sizeof(uint32_t));
-            //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate memory for table in device reversed (4). Error: %d\n", ret); exit(-1); }
-
             // ## POINTER SECTION 8
 #ifdef SHOWTIME
             clock_gettime(CLOCK_MONOTONIC, &HD_start);
 #endif
-            //address_checker = realign_address(address_checker, 8);
-            //ptr_keys_buf = (uint64_t *) (base_ptr + address_checker);
-            //address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
-
-            //ptr_values_buf = (uint32_t *) (base_ptr + address_checker);
-            //address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 4);
-
-            //ret = cudaMemset(ptr_keys_buf, 0xFFFFFFFF, words_at_once * sizeof(uint64_t));
-            //ret = cudaMemset(ptr_values_buf, 0xFFFFFFFF, words_at_once * sizeof(uint32_t));
-            //cub::DoubleBuffer<uint64_t> d_keys_ref(ptr_keys, ptr_keys_buf);
-            //cub::DoubleBuffer<uint32_t> d_values_ref(ptr_values, ptr_values_buf);
-            //d_temp_storage = NULL;
-            //temp_storage_bytes = 0;
-            //cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
-            //ret = cudaDeviceSynchronize();
-            //if(ret != cudaSuccess){ fprintf(stderr, "Bad pre-sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
-
-            // Allocate temporary storage
-            //ret = cudaMalloc(&d_temp_storage, temp_storage_bytes);
-            //if(ret != cudaSuccess){ fprintf(stderr, "Bad allocating of temp storage for words sorting (2). Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
-            //cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys_ref, d_values_ref, items_read_y);
-            //ret = cudaDeviceSynchronize();
-            //if(ret != cudaSuccess){ fprintf(stderr, "CUB sorting failed on ref. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
             
 
-            mergesort(ptr_keys, ptr_values, items_read_y, mgpu::less_t<uint64_t>(), context);
+            mergesort(ptr_keys_2, ptr_values_2, items_read_y, mgpu::less_t<uint64_t>(), context);
             ret = cudaDeviceSynchronize();
 
             if(ret != cudaSuccess){ fprintf(stderr, "MODERNGPU sorting failed on words reverse. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
-
-            // Download kmers
-            ret = cudaMemcpy(dict_y_keys, ptr_keys, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
-            if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (3). Error: %d\n", ret); exit(-1); }
-            ret = cudaMemcpy(dict_y_values, ptr_values, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
-            if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (4). Error: %d\n", ret); exit(-1); }
-
-            //ret = cudaFree(d_temp_storage);
-            //if(ret != cudaSuccess){ fprintf(stderr, "Bad free of temp storage (2): %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
             pos_in_ref += words_at_once;
 #ifdef SHOWTIME
@@ -1401,23 +1397,46 @@ int main(int argc, char ** argv)
             // Generate hits for the current split BUT REVERSED !
             ////////////////////////////////////////////////////////////////////////////////
 
-            
-            //cudaFree(keys);
-            //cudaFree(values);
-            //cudaFree(keys_buf);
-            //cudaFree(values_buf);
 #ifdef SHOWTIME
             clock_gettime(CLOCK_MONOTONIC, &HD_start);
 #endif
             uint32_t n_hits_found;
             if(fast == 2)
                 n_hits_found = generate_hits_fast(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
-            else
-#ifdef AVX512CUSTOM
-                n_hits_found = generate_hits_sensitive_avx512(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
-#else
-                n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency, fast);
-#endif
+//            else
+//#ifdef AVX512CUSTOM
+//                n_hits_found = generate_hits_sensitive_avx512(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
+//#else
+//                n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency, fast);
+//#endif
+
+            uint64_t mem_block = (max_hits)/32;
+            fprintf(stdout, "-----DEBUG size of mem block ==:> %" PRIu64 "\n", mem_block * sizeof(uint64_t));
+
+
+            // Set error status to zero
+            ret = cudaMemset(ptr_device_error, 0x00000000, sizeof(int32_t));
+            ret = cudaMemset(ptr_device_diagonals, 0x00000000,  max_hits * sizeof(uint64_t));
+            
+
+            // disabled right now for testing
+            //kernel_hits<<<32, 32>>>(ptr_keys, ptr_keys_2, ptr_values, ptr_values_2, ptr_device_diagonals, (int32_t) mem_block, (int32_t) items_read_x, (int32_t) items_read_y, ptr_device_error, ref_len, ptr_hits_log);
+            ret = cudaDeviceSynchronize();
+
+
+            int32_t device_error;
+            if(ret != cudaSuccess){ fprintf(stderr, "Error generating reverse hits on device. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(&device_error, ptr_device_error, sizeof(int32_t), cudaMemcpyDeviceToHost);
+            if(ret != cudaSuccess){ fprintf(stderr, "Downloading error status on reverse hits generation. Error: %d\n", ret); exit(-1); }
+            printf("debug from error hits : %d\n", device_error);
+            if(device_error == -1) { fprintf(stderr, "Error generating reverse hits on device. Error: %d\n", device_error); exit(-1); }
+
+            uint32_t * hits_log = (uint32_t *) malloc(32*sizeof(uint32_t)); memset(hits_log, 0x00000000, 32*sizeof(uint32_t));
+            ret = cudaMemcpy(hits_log, ptr_hits_log, sizeof(uint32_t)*32, cudaMemcpyDeviceToHost);
+            for(i=0; i<32; i++) n_hits_found += hits_log[i];
+            free(hits_log);
+
+
 #ifdef SHOWTIME
             clock_gettime(CLOCK_MONOTONIC, &HD_end);
             time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
@@ -1429,11 +1448,6 @@ int main(int argc, char ** argv)
             time_nanoseconds = 0;
             fprintf(stdout, "[INFO] Generated %" PRIu32" hits on reversed split %d -> (%d%%)[%u,%u]{%u,%u}\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len), pos_in_query, pos_in_ref, items_read_x, items_read_y);
 #endif 
-
-
-
-            //printf("VALHALA 1\n");
-            //continue;
 
             ////////////////////////////////////////////////////////////////////////////////
             // Sort hits for the current split BUT REVERSED !
@@ -1815,6 +1829,14 @@ uint64_t memory_allocation_chooser(uint64_t total_memory)
     else if(total_memory <= 8689934592) return 200*1024*1024;
     return 300*1024*1024;
  
+}
+
+char * dump_memory_region(char * ptr_pointer, uint64_t size){
+
+    char * anything = (char *) malloc(size*sizeof(char));
+    int ret = cudaMemcpy(anything, ptr_pointer, size * sizeof(char), cudaMemcpyDeviceToHost);
+    if(ret != cudaSuccess){ fprintf(stderr, "Dumping data region. Error: %d\n", ret); exit(-1); }
+    return anything;
 }
 
 

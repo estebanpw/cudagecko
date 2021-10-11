@@ -337,8 +337,8 @@ uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * 
         
         if(keys_x[id_x] == keys_y[id_y] && values_x[id_x] != 0xFFFFFFFF && values_y[id_y] != 0xFFFFFFFF) {
 
-        uint64_t step_x = 1, step_y = 1;
-        if(fast > 0) find_consecutive_seeds(id_x, id_y, keys_x, keys_y, values_x, values_y, items_x, items_y, &step_x, &step_y);
+            uint64_t step_x = 1, step_y = 1;
+            if(fast > 0) find_consecutive_seeds(id_x, id_y, keys_x, keys_y, values_x, values_y, items_x, items_y, &step_x, &step_y);
 
 
             uint64_t curr_id_y;
@@ -893,6 +893,19 @@ void find_consecutive_seeds(uint64_t i, uint64_t j, uint64_t * keys_x, uint64_t 
 
 }
 
+uint32_t binary_search_keys(uint64_t * keys, uint32_t items, uint64_t target)
+{
+    uint32_t l = 0, r = items;
+    while(l < r)
+    {
+        uint32_t m = (l + r) / 2;
+        if(keys[m] < target)
+            l = m + 1;
+        else
+            r = m;
+    }
+    return l;
+}
 
 
 
