@@ -105,21 +105,49 @@ __device__ uint32_t binary_search_hits(uint64_t key_x, uint64_t * hashes_y, uint
     return l;
 }
 
+
 __global__ void kernel_find_leftmost_items(uint64_t * hashes_x, uint32_t * pos_x, uint64_t * hashes_y, uint32_t * pos_y, uint32_t limit_x, uint32_t limit_y)
 {
     *pos_x = binary_search_hits(0xFFFFFFFFFFFFFFFF, hashes_x, limit_x);
     *pos_y = binary_search_hits(0xFFFFFFFFFFFFFFFF, hashes_y, limit_y);
 }
 
+/*
+
+ * kernel_hits -> Computes the hits between two lists of sorted words
+
+ * Constraints:
+    * All "bad" words must have value 0xFF...FF and position value 0xFF..FF and therefore their sorted positions must be at the very end of the list
+
+ * @param hashes_x The hash keys for the x or query sequence in ascending order
+ * @param hashes_y The hash keys for the y or reference sequence in ascending order
+ * @param positions_x The positional value paired to each query key
+ * @param positions_y The positional value paired to each reference key
+ * @param hit_write_section The memory block to store all matched hits in the form of a diagonal d=(rlen + x - y)<<32 + x
+ * @param mem_block The size of memory section from @hit_write_section reserved for each block (in number of hits, not bytes)
+ * @param limit_* The number of properly formed words for the query and reference as retrieved by the binary search (i.e. index where 0xFF..FF begins)
+ * @param error Variable to store function-specific error and return it to the host control
+ * @param ref_len The length of the reference sequence (required to calculate the diagonal value)
+ * @param hits_log The resulting number of hits created by each block
+ * @param atomic_distributer An integer variable in global memory that should be accessed atomically and used to distribute the extra large memory blocks of hits
+ * @param auxiliary_hit_memory A special section of memory used in conjunction with an atomic operation to allow some blocks to write a larger amount of hits
+ * @param extra_large_memory_block The size (in number of hits) that a block can have in the additional hit space
+ * @param max_extra_sections The maximum number of memory sections that can be given additionally with the auxiliary_hit_memory
+ * @return Nothing, its a cuda kernel
+
+*/
+
 __global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t * positions_x, uint32_t * positions_y, 
-    uint64_t * hit_write_section, int32_t mem_block, uint32_t limit_x, uint32_t limit_y, int32_t * error, uint32_t ref_len, uint32_t * hits_log)//, uint64_t * messages)
+    uint64_t * hit_write_section, int32_t mem_block, uint32_t limit_x, uint32_t limit_y, int32_t * error, uint32_t ref_len,
+    uint32_t * hits_log, int32_t * atomic_distributer, uint64_t * auxiliary_hit_memory, uint32_t extra_large_memory_block, uint32_t max_extra_sections)//, uint64_t * messages)
 {
     // !!!!!!!!!!!!!
     // TODO: make the x words also fully aligned to 256 
     // !!!!!!!!!!!!!
 
     //uint32_t messageID = 0, messageMAX=1000*1000*10;
-    uint32_t accumulated = blockIdx.x * (uint32_t) mem_block;
+    uint32_t current_mem_block = (uint32_t) mem_block;
+    uint32_t accumulated = 0;
 
     uint32_t batch = (uint32_t) limit_x / gridDim.x;
     uint32_t word_x_id = blockIdx.x * batch;
@@ -129,6 +157,8 @@ __global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t *
     __shared__ uint32_t cached_pos_x[32];
     __shared__ uint32_t cached_pos_y[32];
     //__shared__ uint64_t cached_writes[32];
+
+    uint64_t * ptr_to_write_section = &hit_write_section[blockIdx.x * current_mem_block]; // To be changed if needed in case of more hits
 
     uint32_t word_y_id = binary_search_hits(hashes_x[word_x_id], hashes_y, limit_y);
     //if(threadIdx.x == 0) printf("[%d] I found my hash [%" PRIu64"] [I was looking for %" PRIu64" at p=%u] at p=%u, and i work from [%u to %u]\n", blockIdx.x, hashes_y[word_y_id], hashes_x[word_x_id], word_x_id, word_y_id, word_x_id, word_x_id+batch);
@@ -159,7 +189,7 @@ __global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t *
                 if(cached_keys_x[current_word_x] == cached_keys_y[threadIdx.x])
                 {
                     hit = 1;
-                    hit_write_section[accumulated + threadIdx.x] = partial_diag - (((uint64_t) cached_pos_y[threadIdx.x]) << 32 );
+                    ptr_to_write_section[accumulated + threadIdx.x] = partial_diag - (((uint64_t) cached_pos_y[threadIdx.x]) << 32 );
                 }
                 // Distribute number of matches
                 for (int offset = 16; offset > 0; offset = offset >> 1)
@@ -168,7 +198,23 @@ __global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t *
 
                 total_hits += hit;
                 accumulated += hit;
-                if(accumulated >= (blockIdx.x+1) * (uint32_t) mem_block) { *error = - blockIdx.x; return; }
+
+                if(accumulated >= (uint32_t) current_mem_block - blockDim.x) {
+                    // Assign one of the large blocks
+                    int32_t atomic_position;
+                    if(threadIdx.x == 0) atomic_position = atomicAdd(atomic_distributer, 1);
+                    atomic_position = __shfl_sync(0xFFFFFFFF, atomic_position, 0);
+
+                    accumulated = 0;
+                    ptr_to_write_section = &auxiliary_hit_memory[(uint32_t) atomic_position * extra_large_memory_block];
+
+                    current_mem_block = extra_large_memory_block;
+
+                    if(atomic_position >= max_extra_sections){
+                        *error = - ((int32_t) blockIdx.x + 1); 
+                        return; 
+                    }
+                }
                 
 
                 if(cached_keys_x[current_word_x] < cached_keys_y[0])

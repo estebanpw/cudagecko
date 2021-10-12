@@ -94,24 +94,28 @@ int main(int argc, char ** argv)
     // One workload depends on number of words (words + sortwords + generate hits)
     // The other one depends on number of hits (sort hits + filterhits + frags)
 
+    // [TODO] the rework on hits memory allocation
+    // It used to be 8+8+4+4 now its only the 8
+
     if(fast == 2) factor = 0.45;
     else if(fast == 1) factor = 0.45;
     uint64_t bytes_for_words = (factor * effective_global_ram); // 512 MB for words
     uint64_t words_at_once = bytes_for_words / (8+8+4+4); 
-    uint64_t max_hits = (effective_global_ram - bytes_for_words) / (8+8+4+4); // The rest for allocating hits
-    uint64_t bytes_to_subtract = max_hits * (8+4);
+    uint64_t max_hits = (effective_global_ram - bytes_for_words) / (2*8); // The rest for allocating hits
+    uint64_t bytes_to_subtract = max_hits * 8;
 
 
 
 
-    ret = cudaMalloc(&data_mem, (effective_global_ram - bytes_to_subtract) * sizeof(char)); 
+    //ret = cudaMalloc(&data_mem, (effective_global_ram - bytes_to_subtract) * sizeof(char)); 
+    ret = cudaMalloc(&data_mem, (effective_global_ram) * sizeof(char)); 
     if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate pool memory in device. Error: %d\n", ret); exit(-1); }
     fprintf(stdout, "[INFO] Memory pool at %p of size %lu bytes\n", data_mem, (effective_global_ram - bytes_to_subtract) * sizeof(char));
 
 
-    char * pre_alloc;
-    ret = cudaMalloc(&pre_alloc, (bytes_to_subtract) * sizeof(char));
-    if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate auxiliary pool memory in device. Error: %d\n", ret); exit(-1); }
+    char * pre_alloc = &data_mem[effective_global_ram - bytes_to_subtract]; // points to the last section of the big pool
+    //ret = cudaMalloc(&pre_alloc, (bytes_to_subtract) * sizeof(char));
+    //if(ret != cudaSuccess){ fprintf(stderr, "Could not allocate auxiliary pool memory in device. Error: %d\n", ret); exit(-1); }
 
     fprintf(stdout, "[INFO] You can have %" PRIu64" MB for words (i.e. %" PRIu64" words), and %" PRIu64" MB for hits (i.e. %" PRIu64" hits)\n", 
         bytes_for_words / (1024*1024), words_at_once, (effective_global_ram - bytes_for_words) / (1024*1024), max_hits);
@@ -209,6 +213,8 @@ int main(int argc, char ** argv)
 
     // How about one big alloc (save ~3 seconds on mallocs)
     char * host_pinned_mem, * base_ptr_pinned;
+
+    // [TODO] revisit all pinned memory 
     
     uint64_t pinned_bytes_on_host = words_at_once * (sizeof(uint64_t) * (2) + sizeof(uint32_t) * (2));
     pinned_bytes_on_host = pinned_bytes_on_host + max_hits * (sizeof(uint64_t) * (1) + sizeof(uint32_t) * (8));
@@ -933,14 +939,12 @@ int main(int argc, char ** argv)
 //#else
 //                n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency, fast);
 //#endif
-            uint32_t n_blocks_hits = 1024;//items_read_x / 128;
+            uint32_t n_blocks_hits = 8196;//items_read_x / 128;
 
             // Save memory for hits
             //address_checker = 0;
             //base_ptr = &data_mem[0]; // Keep building on top of what we have
-            address_checker = realign_address(address_checker, 8);
-            ptr_device_diagonals = (uint64_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + max_hits * sizeof(uint64_t), 8);
+            
 
             ptr_device_error = (int32_t *) (base_ptr + address_checker);
             address_checker = realign_address(address_checker + sizeof(int32_t), 4);
@@ -949,7 +953,7 @@ int main(int argc, char ** argv)
             address_checker = realign_address(address_checker + sizeof(uint32_t) * n_blocks_hits, 4);
 
             // Set error status to one
-            ret = cudaMemset(ptr_device_error, 0x00000001, sizeof(int32_t));
+            ret = cudaMemset(ptr_device_error, 0x00000000, sizeof(int32_t));
             
             /////////////////// DEBUG MESSAGES INFO
             /*
@@ -961,13 +965,22 @@ int main(int argc, char ** argv)
             */
             //////////////////// END 
 
-            uint64_t mem_block = (max_hits)/n_blocks_hits;
-            fprintf(stdout, "-----DEBUG size of mem block ==:> %" PRIu64 "\n", mem_block * sizeof(uint64_t));
+            uint64_t hits_in_first_mem_block = max_hits / 4;
+            uint64_t hits_in_second_mem_block = max_hits + 3 * (max_hits/4) ;
+            uint64_t mem_block = (hits_in_first_mem_block)/n_blocks_hits;
+            uint64_t max_extra_sections = n_blocks_hits * 0.1;
+            uint64_t extra_large_mem_block = (hits_in_second_mem_block)/max_extra_sections;
+            
+            fprintf(stdout, "-----DEBUG \n\tsize of mem block ==:> %" PRIu64 " (%" PRIu64" hits)\n\tsize of extra mem block ===:> %" PRIu64"(%" PRIu64" hits)\n\tsections ===:>%" PRIu64"\n", mem_block * sizeof(uint64_t), mem_block, extra_large_mem_block * sizeof(uint64_t), extra_large_mem_block, max_extra_sections);
 
             uint32_t * ptr_leftmost_key_x = (uint32_t *) (base_ptr + address_checker);
             address_checker = realign_address(address_checker + sizeof(uint32_t), 4);
             uint32_t * ptr_leftmost_key_y = (uint32_t *) (base_ptr + address_checker);
             address_checker = realign_address(address_checker + sizeof(uint32_t), 4);
+            int32_t * ptr_atomic_distributer = (int32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + sizeof(int32_t), 4);
+            ret = cudaMemset(ptr_atomic_distributer, 0x00000000, sizeof(int32_t));
+
 
             kernel_find_leftmost_items<<<1, 1>>>(ptr_keys, ptr_leftmost_key_x, ptr_keys_2, ptr_leftmost_key_y, items_read_x, items_read_y);
             ret = cudaDeviceSynchronize();
@@ -980,25 +993,37 @@ int main(int argc, char ** argv)
 
             printf("Leftmost elements are: %u, %u out of [%u, %u]\n", leftmost_key_x, leftmost_key_y, items_read_x, items_read_y);
 
+            address_checker = realign_address(address_checker, 8);
+            ptr_device_diagonals = (uint64_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + hits_in_first_mem_block * sizeof(uint64_t), 8);
+
+
+            uint64_t * ptr_auxiliary_hit_memory = (uint64_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + hits_in_second_mem_block * sizeof(uint64_t), 8);
             //cudaProfilerStart();
+
             kernel_hits<<<n_blocks_hits, 32>>>(ptr_keys, ptr_keys_2, ptr_values, ptr_values_2, ptr_device_diagonals, (int32_t) mem_block, 
-                leftmost_key_x, leftmost_key_y, ptr_device_error, ref_len, ptr_hits_log);//, ptr_messages_log);
+                leftmost_key_x, leftmost_key_y, ptr_device_error, ref_len, ptr_hits_log, ptr_atomic_distributer, ptr_auxiliary_hit_memory,
+                 (uint32_t) extra_large_mem_block, (uint32_t) max_extra_sections);//, ptr_messages_log);
 
             //cudaProfilerStop();
             ret = cudaDeviceSynchronize();
 
-            if(ret != cudaSuccess){ fprintf(stderr, "Error generating hits on device. Error: %d\n", ret); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stderr, "Fatal error generating hits on device. Error: %d\n", ret); exit(-1); }
             int32_t device_error;
             ret = cudaMemcpy(&device_error, ptr_device_error, sizeof(int32_t), cudaMemcpyDeviceToHost);
+            int32_t reached_sections = -1;
+            ret = cudaMemcpy(&reached_sections, ptr_atomic_distributer, sizeof(int32_t), cudaMemcpyDeviceToHost);
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading error status on hits generation. Error: %d\n", ret); exit(-1); }
-            printf("debug from error hits : %d\n", device_error);
-            if(device_error <= 0) { fprintf(stderr, "Error generating hits on device. Error: %d\n", device_error); exit(-1); }
+            printf("debug from error hits : %d [reached: %d]\n", device_error, reached_sections);
+            if(device_error < 0) { fprintf(stderr, "Error generating hits on device. Error: %d\n", device_error);  }
 
-            
+            // ADD kernel here to copy hits consecutively
+            //pre_alloc // this is the char * pointer for auxiliary memory in the sorts
 
             uint32_t * hits_log = (uint32_t *) malloc(n_blocks_hits*sizeof(uint32_t)); memset(hits_log, 0x00000000, n_blocks_hits*sizeof(uint32_t));
             ret = cudaMemcpy(hits_log, ptr_hits_log, sizeof(uint32_t)*n_blocks_hits, cudaMemcpyDeviceToHost);
-            for(i=0; i<n_blocks_hits; i++) { n_hits_found += hits_log[i]; }
+            for(i=0; i<n_blocks_hits; i++) { n_hits_found += hits_log[i]; printf("LOGGO block %d has %u hits while max is %" PRIu64"\n", i, hits_log[i], mem_block); }
 
             free(hits_log);
 
@@ -1117,6 +1142,11 @@ int main(int argc, char ** argv)
 #endif
             //kernel_filter_hits<<<n_hits_found/(32*32)+1, 32>>>(ptr_device_diagonals, ref_len, n_hits_found);
             //cudaProfilerStart();
+
+
+            // I KNOW WHY LESS HITS/FRAGS ARE BEING GENERATED:
+            // THE FILTERING IS BEING APPLIED TO THE N_HITS_FOUND REGION, BUT THE HITS ARE WRITTEN SCATTERED IN BLOCKS IN THE PARALLEL KERNEL
+
             kernel_filter_hits_parallel<<<n_hits_found/(64)+1, 64>>>(ptr_device_diagonals, ref_len, n_hits_found);
             ret = cudaDeviceSynchronize();
             //cudaProfilerStop();
@@ -1197,8 +1227,6 @@ int main(int argc, char ** argv)
 
             uint32_t * ptr_right_offset = (uint32_t *) (base_pre_alloc_ptr + address_checker_pre_alloc);
             address_checker_pre_alloc = realign_address(address_checker_pre_alloc + max_hits * sizeof(uint32_t), 32);
-
-
 
 
 
@@ -1291,7 +1319,7 @@ int main(int argc, char ** argv)
 
         }
 
-        exit(0);
+        exit(-1);
 
         // Restart the reference for every block in query
         pos_in_ref = 0;
