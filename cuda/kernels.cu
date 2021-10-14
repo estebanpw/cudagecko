@@ -114,6 +114,32 @@ __global__ void kernel_find_leftmost_items(uint64_t * hashes_x, uint32_t * pos_x
 
 /*
 
+ * kernel_compact_hits -> Removes gaps between diagonal hits
+
+ * Constraints:
+    * 
+
+ * @param hashes_x The hash keys for the x or query sequence in ascending order
+ * @return Nothing
+ */
+
+
+__global__ void kernel_compact_hits(uint64_t * ptr_device_diagonals, uint32_t * ptr_hits_log, uint32_t * ptr_accum_log, uint32_t blocks_per_section, uint32_t mem_block, uint64_t * ptr_copy_place_diagonals, uint32_t offset_remover)
+{
+    uint32_t section_idx = blockIdx.x / blocks_per_section;
+    uint32_t subblock = blockIdx.x % blocks_per_section;
+    uint32_t copy_position = section_idx * mem_block + subblock * blockDim.x;
+    uint32_t pointing_pos = subblock * blockDim.x + threadIdx.x;
+
+    if(pointing_pos < ptr_hits_log[section_idx]){
+        ptr_copy_place_diagonals[ptr_accum_log[section_idx] - offset_remover + pointing_pos] = ptr_device_diagonals[copy_position + threadIdx.x];
+    }
+
+}
+
+
+/*
+
  * kernel_hits -> Computes the hits between two lists of sorted words
 
  * Constraints:
@@ -133,19 +159,20 @@ __global__ void kernel_find_leftmost_items(uint64_t * hashes_x, uint32_t * pos_x
  * @param auxiliary_hit_memory A special section of memory used in conjunction with an atomic operation to allow some blocks to write a larger amount of hits
  * @param extra_large_memory_block The size (in number of hits) that a block can have in the additional hit space
  * @param max_extra_sections The maximum number of memory sections that can be given additionally with the auxiliary_hit_memory
+ * @param hits_log_extra Same as hits_log but for the extra space
  * @return Nothing, its a cuda kernel
 
 */
 
 __global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t * positions_x, uint32_t * positions_y, 
     uint64_t * hit_write_section, int32_t mem_block, uint32_t limit_x, uint32_t limit_y, int32_t * error, uint32_t ref_len,
-    uint32_t * hits_log, int32_t * atomic_distributer, uint64_t * auxiliary_hit_memory, uint32_t extra_large_memory_block, uint32_t max_extra_sections)//, uint64_t * messages)
+    uint32_t * hits_log, int32_t * atomic_distributer, uint64_t * auxiliary_hit_memory, uint32_t extra_large_memory_block, 
+    uint32_t max_extra_sections, uint32_t * hits_log_extra)//, uint64_t * messages)
 {
     // !!!!!!!!!!!!!
     // TODO: make the x words also fully aligned to 256 
     // !!!!!!!!!!!!!
 
-    //uint32_t messageID = 0, messageMAX=1000*1000*10;
     uint32_t current_mem_block = (uint32_t) mem_block;
     uint32_t accumulated = 0;
 
@@ -156,7 +183,9 @@ __global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t *
     __shared__ uint64_t cached_keys_y[32]; 
     __shared__ uint32_t cached_pos_x[32];
     __shared__ uint32_t cached_pos_y[32];
-    //__shared__ uint64_t cached_writes[32];
+
+    // Keeps track of where we are writing in the additional memory
+    int32_t atomic_position = -1;
 
     uint64_t * ptr_to_write_section = &hit_write_section[blockIdx.x * current_mem_block]; // To be changed if needed in case of more hits
 
@@ -196,12 +225,12 @@ __global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t *
                     hit += __shfl_down_sync(0xFFFFFFFF, hit, offset);
                 hit = __shfl_sync(0xFFFFFFFF, hit, 0);
 
-                total_hits += hit;
                 accumulated += hit;
 
                 if(accumulated >= (uint32_t) current_mem_block - blockDim.x) {
                     // Assign one of the large blocks
-                    int32_t atomic_position;
+                    if(threadIdx.x == 0 && atomic_position == -1) hits_log[blockIdx.x] = (uint32_t) accumulated;
+                    if(threadIdx.x == 0 && atomic_position > -1) hits_log_extra[atomic_position] = (uint32_t) accumulated;
                     if(threadIdx.x == 0) atomic_position = atomicAdd(atomic_distributer, 1);
                     atomic_position = __shfl_sync(0xFFFFFFFF, atomic_position, 0);
 
@@ -282,8 +311,8 @@ __global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t *
         i += blockDim.x;
     }
 
-    if(threadIdx.x == 0) hits_log[blockIdx.x] = (uint32_t) total_hits;
-    //if(threadIdx.x == 0) printf("block %d finished\n", blockIdx.x);
+    if(threadIdx.x == 0 && atomic_position > -1) hits_log_extra[atomic_position] = (uint32_t) accumulated;
+    if(threadIdx.x == 0 && atomic_position == -1) hits_log[blockIdx.x] = (uint32_t) accumulated;
 
     /*
     int32_t word_x_id = blockIdx.x;

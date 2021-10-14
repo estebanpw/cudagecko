@@ -761,7 +761,7 @@ int main(int argc, char ** argv)
         // These definitions are for the processing of hits - reused in reference and query
         uint64_t * ptr_device_diagonals;
         int32_t * ptr_device_error;
-        uint32_t * ptr_hits_log;
+        uint32_t * ptr_hits_log, * ptr_hits_log_extra;
         uint64_t * ptr_keys_2;
         uint32_t * ptr_values_2;
 
@@ -939,7 +939,7 @@ int main(int argc, char ** argv)
 //#else
 //                n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency, fast);
 //#endif
-            uint32_t n_blocks_hits = 8196;//items_read_x / 128;
+            uint32_t n_blocks_hits = 8192;//items_read_x / 128;
 
             // Save memory for hits
             //address_checker = 0;
@@ -970,6 +970,9 @@ int main(int argc, char ** argv)
             uint64_t mem_block = (hits_in_first_mem_block)/n_blocks_hits;
             uint64_t max_extra_sections = n_blocks_hits * 0.1;
             uint64_t extra_large_mem_block = (hits_in_second_mem_block)/max_extra_sections;
+
+            ptr_hits_log_extra = (uint32_t *) (base_ptr + address_checker);
+            address_checker = realign_address(address_checker + sizeof(uint32_t) * max_extra_sections, 4);
             
             fprintf(stdout, "-----DEBUG \n\tsize of mem block ==:> %" PRIu64 " (%" PRIu64" hits)\n\tsize of extra mem block ===:> %" PRIu64"(%" PRIu64" hits)\n\tsections ===:>%" PRIu64"\n", mem_block * sizeof(uint64_t), mem_block, extra_large_mem_block * sizeof(uint64_t), extra_large_mem_block, max_extra_sections);
 
@@ -997,14 +1000,16 @@ int main(int argc, char ** argv)
             ptr_device_diagonals = (uint64_t *) (base_ptr + address_checker);
             address_checker = realign_address(address_checker + hits_in_first_mem_block * sizeof(uint64_t), 8);
 
-
             uint64_t * ptr_auxiliary_hit_memory = (uint64_t *) (base_ptr + address_checker);
             address_checker = realign_address(address_checker + hits_in_second_mem_block * sizeof(uint64_t), 8);
             //cudaProfilerStart();
 
+            ret = cudaMemset(ptr_device_diagonals, 0xFFFFFFFF, sizeof(uint64_t)*hits_in_first_mem_block);
+            ret = cudaMemset(ptr_auxiliary_hit_memory, 0xFFFFFFFF, sizeof(uint64_t)*hits_in_second_mem_block);
+
             kernel_hits<<<n_blocks_hits, 32>>>(ptr_keys, ptr_keys_2, ptr_values, ptr_values_2, ptr_device_diagonals, (int32_t) mem_block, 
                 leftmost_key_x, leftmost_key_y, ptr_device_error, ref_len, ptr_hits_log, ptr_atomic_distributer, ptr_auxiliary_hit_memory,
-                 (uint32_t) extra_large_mem_block, (uint32_t) max_extra_sections);//, ptr_messages_log);
+                 (uint32_t) extra_large_mem_block, (uint32_t) max_extra_sections, ptr_hits_log_extra);//, ptr_messages_log);
 
             //cudaProfilerStop();
             ret = cudaDeviceSynchronize();
@@ -1021,11 +1026,93 @@ int main(int argc, char ** argv)
             // ADD kernel here to copy hits consecutively
             //pre_alloc // this is the char * pointer for auxiliary memory in the sorts
 
-            uint32_t * hits_log = (uint32_t *) malloc(n_blocks_hits*sizeof(uint32_t)); memset(hits_log, 0x00000000, n_blocks_hits*sizeof(uint32_t));
-            ret = cudaMemcpy(hits_log, ptr_hits_log, sizeof(uint32_t)*n_blocks_hits, cudaMemcpyDeviceToHost);
-            for(i=0; i<n_blocks_hits; i++) { n_hits_found += hits_log[i]; printf("LOGGO block %d has %u hits while max is %" PRIu64"\n", i, hits_log[i], mem_block); }
+            ////////////////////////////////////////////////////////////////////////////////
+            // Hits compacting
+            ////////////////////////////////////////////////////////////////////////////////
 
+            uint32_t * hits_log = (uint32_t *) malloc(n_blocks_hits*sizeof(uint32_t)); 
+            uint32_t * extra_log = (uint32_t *) malloc(max_extra_sections*sizeof(uint32_t)); 
+            uint32_t * accum_log = (uint32_t *) malloc(n_blocks_hits*sizeof(uint32_t)); 
+            
+            ret = cudaMemcpy(hits_log, ptr_hits_log, sizeof(uint32_t)*n_blocks_hits, cudaMemcpyDeviceToHost);
+            ret = cudaMemcpy(extra_log, ptr_hits_log_extra, sizeof(uint32_t)*max_extra_sections, cudaMemcpyDeviceToHost);
+            for(i=0; i<n_blocks_hits; i++) {
+                accum_log[i] = n_hits_found;
+                n_hits_found += hits_log[i];
+                printf("LOGGO block %u has %u hits while max is %" PRIu64"\n", i, hits_log[i], mem_block); 
+            }
+
+
+            
+
+            // First step: measure how many hits can be stored at once (in the worst case) in the words section
+            // This is (consecutive region): ptr_keys,ptr_values,ptr_keys_2,ptr_values_2
+            // And amounts for: words_at_once * (8+4+8+4) bytes
+            // which equals max number of 8-byte diagonals: 3*words_at_once
+
+            uint64_t * ptr_copy_place_diagonals = (uint64_t *) &ptr_keys[0];
+            uint32_t max_copy_diagonals = 3 * (uint32_t) words_at_once;
+            uint32_t blocks_per_section = 16;
+            uint32_t runs = (uint32_t) hits_in_first_mem_block / max_copy_diagonals + 1;
+
+            // Upload accumulated (overwrite sequence data since its no longer needed)
+            uint32_t * ptr_accum_log = (uint32_t *) (&data_mem[0]);
+            ret = cudaMemcpy(ptr_accum_log, accum_log, sizeof(uint32_t)*n_blocks_hits, cudaMemcpyHostToDevice);
+
+            printf("There will be %u runs on first part\n", runs);
+
+            kernel_compact_hits<<<n_blocks_hits * blocks_per_section, n_blocks_hits / blocks_per_section>>>(ptr_device_diagonals, ptr_hits_log, ptr_accum_log, blocks_per_section, mem_block, ptr_copy_place_diagonals, 0);
+            ret = cudaDeviceSynchronize();
+
+            if(ret != cudaSuccess){ fprintf(stderr, "Could not compact hits on first stage. Error: %d\n", ret); exit(-1); }
+
+            ret = cudaMemcpy(ptr_device_diagonals, ptr_copy_place_diagonals, sizeof(uint64_t)*n_hits_found, cudaMemcpyDeviceToDevice);
+
+            uint32_t total_hits_copied = n_hits_found;
+            // Second run
+            uint32_t second_hits_found = 0;
+
+            for(i=0; i<max_extra_sections; i++) {
+                accum_log[i] = second_hits_found;
+                second_hits_found += extra_log[i];
+                //printf("LOGGO EXTRA! block %u has %u hits while max is %" PRIu64"\n", i, extra_log[i], extra_large_mem_block); 
+            }
+
+            ret = cudaMemcpy(ptr_accum_log, accum_log, sizeof(uint32_t)*max_extra_sections, cudaMemcpyHostToDevice);
+
+            runs = (uint32_t) hits_in_second_mem_block / max_copy_diagonals + 1;
+            printf("There will be %u runs on second part\n", runs);
+            blocks_per_section = extra_large_mem_block / 512;
+            uint32_t sections_per_run = (max_extra_sections / runs);
+            
+
+            for(i=0; i<runs; i++){
+
+                uint32_t section_from = sections_per_run * i;
+                uint32_t offset_remover = accum_log[section_from];
+                kernel_compact_hits<<<sections_per_run * blocks_per_section, 512>>>(&ptr_auxiliary_hit_memory[section_from], &ptr_hits_log_extra[section_from], ptr_accum_log, blocks_per_section, extra_large_mem_block, ptr_copy_place_diagonals, offset_remover);
+                ret = cudaDeviceSynchronize();
+                if(ret != cudaSuccess){ fprintf(stderr, "Could not compact hits on second stagem run %u. Error: %d\n", ret, runs); exit(-1); }
+
+                ret = cudaMemcpy(&ptr_device_diagonals[total_hits_copied], ptr_copy_place_diagonals, sizeof(uint64_t)*accum_log[sections_per_run * (i+1)], cudaMemcpyDeviceToDevice);
+                total_hits_copied += accum_log[sections_per_run * (i+1)];
+            }
+
+
+
+
+
+            /*
+            uint32_t * ptr_diff_log = &ptr_values[0];
+
+            ret = cudaMemcpy(ptr_diff_log, diff_log, n_blocks_hits * sizeof(uint32_t), cudaMemcpyHostToDevice);
+            kernel_compact_hits<<<compacting_blocks, 256>>>(ptr_device_diagonals, ptr_hits_log, ptr_accum_log, ptr_aux_space, mem_block);
+
+            //kernel_compact_hits<<<max_extra_sections,>>>(ptr_auxiliary_hit_memory, ptr_hits_log_extra, );
+            */
             free(hits_log);
+            free(extra_log);
+            free(accum_log);
 
             //////////////////// DEBUG MESSAGES INFO PART 2
             /*
@@ -1120,6 +1207,10 @@ int main(int argc, char ** argv)
             //ret = cudaMemcpy(ptr_device_diagonals, diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyHostToDevice);
             //if(ret != cudaSuccess){ fprintf(stderr, "Uploading device diagonals. Error: %d\n", ret); exit(-1); }
 
+            //ret = cudaMemset(pre_alloc, 0x00000000, max_hits * sizeof(uint64_t));
+
+
+            // CURRENTLY FAILING HERE BECAUSE THE SIZE OF ptr_device_diagonals AND n_hits_found DOES NOT ADD UP
             mergesort(ptr_device_diagonals, n_hits_found, mgpu::less_t<uint64_t>(), context);
 
             ret = cudaDeviceSynchronize();
