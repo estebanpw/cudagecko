@@ -196,6 +196,9 @@ __global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t *
     if(misaligned < word_y_id) word_y_id = word_y_id - misaligned; // Make it aligned
 
     uint32_t i = 0, total_hits = 0;
+
+    uint64_t current_save;
+
     while(i < batch)
     {
         cached_keys_x[threadIdx.x] = hashes_x[word_x_id+threadIdx.x];
@@ -211,6 +214,7 @@ __global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t *
                 // Cache current block of y-words
                 cached_keys_y[threadIdx.x] = hashes_y[current_word_y_id+threadIdx.x];
                 cached_pos_y[threadIdx.x]  = positions_y[current_word_y_id+threadIdx.x];
+
                 uint32_t hit = 0;
                 // Match keys
                 
@@ -218,8 +222,19 @@ __global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t *
                 if(cached_keys_x[current_word_x] == cached_keys_y[threadIdx.x])
                 {
                     hit = 1;
-                    ptr_to_write_section[accumulated + threadIdx.x] = partial_diag - (((uint64_t) cached_pos_y[threadIdx.x]) << 32 );
+                    //ptr_to_write_section[accumulated + threadIdx.x] = partial_diag - (((uint64_t) cached_pos_y[threadIdx.x]) << 32 );
+                    current_save = partial_diag - (((uint64_t) cached_pos_y[threadIdx.x]) << 32 );
                 }
+                uint32_t mingap = threadIdx.x;
+                if(hit == 0) mingap = 0xFFFFFFFF;
+                // Distribute where first match happens
+                for (int offset = 16; offset > 0; offset = offset >> 1)
+                    mingap = min(mingap, __shfl_down_sync(0xFFFFFFFF, mingap, offset));
+                mingap = __shfl_sync(0xFFFFFFFF, mingap, 0);
+
+                // And write hits
+                if(hit == 1) ptr_to_write_section[accumulated + threadIdx.x - mingap] = current_save;
+
                 // Distribute number of matches
                 for (int offset = 16; offset > 0; offset = offset >> 1)
                     hit += __shfl_down_sync(0xFFFFFFFF, hit, offset);
@@ -241,11 +256,12 @@ __global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t *
 
                     if(atomic_position >= max_extra_sections){
                         *error = - ((int32_t) blockIdx.x + 1); 
-                        return; 
+                        return;
                     }
                 }
-                
 
+                
+                // Control flow
                 if(cached_keys_x[current_word_x] < cached_keys_y[0])
                 {
                     if(current_word_x < blockDim.x-1 && cached_keys_x[current_word_x+1] > cached_keys_x[current_word_x]
@@ -258,8 +274,22 @@ __global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t *
                     word_y_id = current_word_y_id;
                 }
                 current_word_y_id += blockDim.x;
+                
 
-                /*
+            }
+
+        }
+        //if(threadIdx.x == 0 && messageID<messageMAX) messages[messageID++] = (((uint64_t)3 << 32) | word_x_id); //printf("%d Fetched next x block %d!\n", messageID++, word_x_id);
+        word_x_id += blockDim.x;
+        i += blockDim.x;
+    }
+
+    if(threadIdx.x == 0 && atomic_position > -1) hits_log_extra[atomic_position] = (uint32_t) accumulated;
+    if(threadIdx.x == 0 && atomic_position == -1) hits_log[blockIdx.x] = (uint32_t) accumulated;
+
+
+
+    /*
                 // Very fast on some, on others it goes very slow [T3]
                 // I know it is somehow related to length, but not to number of hits (on bosta it goes well, despite having more hits than galga)
                 // so it must be linked to the actual distribution of hits
@@ -303,16 +333,9 @@ __global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t *
                 else
                     break;
                 */ 
-            }
 
-        }
-        //if(threadIdx.x == 0 && messageID<messageMAX) messages[messageID++] = (((uint64_t)3 << 32) | word_x_id); //printf("%d Fetched next x block %d!\n", messageID++, word_x_id);
-        word_x_id += blockDim.x;
-        i += blockDim.x;
-    }
+    
 
-    if(threadIdx.x == 0 && atomic_position > -1) hits_log_extra[atomic_position] = (uint32_t) accumulated;
-    if(threadIdx.x == 0 && atomic_position == -1) hits_log[blockIdx.x] = (uint32_t) accumulated;
 
     /*
     int32_t word_x_id = blockIdx.x;
