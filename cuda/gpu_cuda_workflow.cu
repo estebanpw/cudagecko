@@ -628,6 +628,7 @@ int main(int argc, char ** argv)
 
         uint32_t * ptr_values = (uint32_t *) (base_ptr + address_checker); 
         address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 8);
+        uint64_t address_CHECKPOINT = address_checker;
         
 
         fprintf(stdout, "[EXECUTING] Running split %d -> (%d%%)[%u,%u]\n", split, (int)((100*(uint64_t)pos_in_query)/(uint64_t)query_len), pos_in_query, pos_in_ref);
@@ -717,10 +718,10 @@ int main(int argc, char ** argv)
         
 
         // Download sorted kmers [ No need to download because of hits processing ###]
-        //ret = cudaMemcpyAsync(dict_x_keys, ptr_keys, items_read_x*sizeof(uint64_t), cudaMemcpyDeviceToHost, streams[0]);
-        //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (1). Error: %d\n", ret); exit(-1); }
-        //ret = cudaMemcpyAsync(dict_x_values, ptr_values, items_read_x*sizeof(uint32_t), cudaMemcpyDeviceToHost, streams[1]);
-        //if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (2). Error: %d\n", ret); exit(-1); }
+        ret = cudaMemcpyAsync(dict_x_keys, ptr_keys, items_read_x*sizeof(uint64_t), cudaMemcpyDeviceToHost, streams[0]);
+        if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (1). Error: %d\n", ret); exit(-1); }
+        ret = cudaMemcpyAsync(dict_x_values, ptr_values, items_read_x*sizeof(uint32_t), cudaMemcpyDeviceToHost, streams[1]);
+        if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers (2). Error: %d\n", ret); exit(-1); }
 
         // Print hits for debug
         //for(i=0; i<items_read_x; i++){
@@ -789,6 +790,15 @@ int main(int argc, char ** argv)
             ptr_seq_dev_mem = &data_mem[0];
             //base_ptr = ptr_seq_dev_mem; // Currently set at the previous realignment in the query word generation
             //address_checker = realign_address(words_at_once, 8); // Currently set at the previous realignment in the query word generation
+            // Actually we have to realign to the checkpoint because of the while
+            address_checker = address_CHECKPOINT;
+
+            // Recopy x words because they were overwritten
+            ret = cudaMemcpy(ptr_keys, dict_x_keys, items_read_x*sizeof(uint64_t), cudaMemcpyHostToDevice);
+            ret = cudaMemcpy(ptr_values, dict_x_values, items_read_x*sizeof(uint32_t), cudaMemcpyHostToDevice);
+            ret = cudaDeviceSynchronize();
+            if(ret != cudaSuccess){ fprintf(stderr, "Could not copy words back in posterior iterations. Error: %d\n", ret); exit(-1); }
+
 
             //address_checker = realign_address(address_checker + words_at_once, 8);
             ptr_keys_2 = (uint64_t *) (base_ptr + address_checker); // We have to realign because of the arbitrary length of the sequence chars
@@ -1051,15 +1061,28 @@ int main(int argc, char ** argv)
                 accum_log[i] = n_hits_found;
                 n_hits_found += hits_log[i];
                 //printf("acum log previous %u -> %u\n", i, accum_log[i]);
-                printf("LOGGO block %u has %u hits while max is %" PRIu64"\n", i, hits_log[i], mem_block); 
+                //printf("LOGGO block %u has %u hits while max is %" PRIu64"\n", i, hits_log[i], mem_block); 
             }
 
-            
+            printf("Found %u hits on first stage\n", n_hits_found);
+
+            /*
             uint64_t * download_hits_DEBUG = (uint64_t *) dump_memory_region((char *)ptr_device_diagonals, hits_in_first_mem_block * sizeof(uint64_t));
             for(i=0; i<hits_in_first_mem_block; i++){
                 //if(download_hits_DEBUG[i] != 0xFFFFFFFFFFFFFFFF)
-                printf("[goodhit] %" PRIu64"\n", download_hits_DEBUG[i]);
+                //printf("[goodhit] %" PRIu64"\n", download_hits_DEBUG[i]);
+
+                uint64_t mask_d  = 0xFFFFFFFF00000000; 
+                uint64_t mask_px = 0x00000000FFFFFFFF;
+                uint32_t d_curr = (uint32_t) ((download_hits_DEBUG[i] & mask_d) >> 32);
+                uint32_t px = (uint32_t) (download_hits_DEBUG[i] & mask_px);
+                uint32_t py = ref_len + px - d_curr; //values_y[index]; 
+                
+                if((download_hits_DEBUG[i] != 0xFFFFFFFFFFFFFFFF) && (px > 26576615 || py > 37502051))
+                    printf("[precompactstage1] i have px: %u py: %u\n", px, py);
             }
+            */
+            
             
             
 
@@ -1068,7 +1091,7 @@ int main(int argc, char ** argv)
             // And amounts for: words_at_once * (8+4+8+4) bytes
             // which equals max number of 8-byte diagonals: 3*words_at_once
 
-            uint64_t * ptr_copy_place_diagonals = (uint64_t *) &ptr_keys[0];
+            uint64_t * ptr_copy_place_diagonals = (uint64_t *) &ptr_keys[0]; // TODO-OW: failing in the loop because x-keys and values get overwritten
             uint32_t max_copy_diagonals = 3 * (uint32_t) words_at_once;
             uint32_t blocks_per_section = mem_block / 512 + 1;
             uint32_t runs = (uint32_t) hits_in_first_mem_block / max_copy_diagonals + 1;
@@ -1077,7 +1100,7 @@ int main(int argc, char ** argv)
             uint32_t * ptr_accum_log = (uint32_t *) (&data_mem[0]);
             ret = cudaMemcpy(ptr_accum_log, accum_log, sizeof(uint32_t)*n_blocks_hits, cudaMemcpyHostToDevice);
 
-            printf("There will be %u runs on first part. [total blocks: %u, total threads: %u]\n", runs, n_blocks_hits * blocks_per_section, n_blocks_hits / blocks_per_section);
+            printf("There will be %u runs on first part. [total blocks: %u, total threads: %u]\n", runs, n_blocks_hits * blocks_per_section, 512);
 
             kernel_compact_hits<<<n_blocks_hits * blocks_per_section, 512>>>(ptr_device_diagonals, ptr_hits_log, ptr_accum_log, blocks_per_section, mem_block, ptr_copy_place_diagonals, 0);
             ret = cudaDeviceSynchronize();
@@ -1098,21 +1121,62 @@ int main(int argc, char ** argv)
             }
 
             ret = cudaMemcpy(ptr_accum_log, accum_log, sizeof(uint32_t)*max_extra_sections, cudaMemcpyHostToDevice);
+            ret = cudaDeviceSynchronize();
 
-            runs = (uint32_t) hits_in_second_mem_block / max_copy_diagonals + 1;
-            printf("There will be %u runs on second part\n", runs);
-            blocks_per_section = extra_large_mem_block / 512;
-            uint32_t sections_per_run = (max_extra_sections / runs);
+            if(reached_sections > 0){
+                uint32_t sections_per_run = max_copy_diagonals / extra_large_mem_block;
+                runs = (uint32_t) reached_sections / sections_per_run + 1;
+                blocks_per_section = extra_large_mem_block / 512;
+                printf("There will be %u runs on second part each copying %u sections [blocks per sect: %u]\n", runs, sections_per_run, blocks_per_section);
             
+            /*
+            // Debug second stage
+            uint64_t * download_massive_hits = (uint64_t *) dump_memory_region((char *)ptr_auxiliary_hit_memory, hits_in_second_mem_block * sizeof(uint64_t));
+            for(i=0; i<hits_in_second_mem_block; i++){
+                //if(download_hits_DEBUG[i] != 0xFFFFFFFFFFFFFFFF)
+                //printf("[goodhit] %" PRIu64"\n", download_hits_DEBUG[i]);
+
+                uint64_t mask_d  = 0xFFFFFFFF00000000; 
+                uint64_t mask_px = 0x00000000FFFFFFFF;
+                uint32_t d_curr = (uint32_t) ((download_massive_hits[i] & mask_d) >> 32);
+                uint32_t px = (uint32_t) (download_massive_hits[i] & mask_px);
+                uint32_t py = ref_len + px - d_curr; //values_y[index]; 
+                
+                if((download_massive_hits[i] != 0xFFFFFFFFFFFFFFFF) && (px > 26576615 || py > 37502051))
+                    printf("[precompactstage2] i have px: %u py: %u\n", px, py);
+            }
+            */
+            
+                uint32_t total_offset = 0;
+                for(i=0; i<runs; i++){
+                    uint32_t j;
+                    uint32_t copied = 0;
+                    uint32_t total_copied = 0;
+                    for(j=i*sections_per_run; j<(i+1)*sections_per_run && j<reached_sections; j++){
+                        //printf("Launching j=%u copying from %u to %u\n", j, j * extra_large_mem_block, accum_log[j] - total_offset);
+                        ret = cudaMemcpy(&ptr_copy_place_diagonals[accum_log[j] - total_offset], &ptr_auxiliary_hit_memory[j * extra_large_mem_block], sizeof(uint64_t)*extra_log[j], cudaMemcpyDeviceToDevice);
+                        copied += extra_log[j];
+                    }
+                    ret = cudaDeviceSynchronize();
+                    if(ret != cudaSuccess){ fprintf(stderr, "Error copying to safe place on %u. Error: %d\n", i, ret); exit(-1); }
+                    total_offset = accum_log[j * sections_per_run];
+                    ret = cudaMemcpy(&ptr_device_diagonals[total_copied + n_hits_found], &ptr_copy_place_diagonals[0], sizeof(uint64_t)*copied, cudaMemcpyDeviceToDevice);
+                    ret = cudaDeviceSynchronize();
+                    total_copied += copied;
+                    if(ret != cudaSuccess){ fprintf(stderr, "Error batching safe place on %u. Error: %d\n", i, ret); exit(-1); }
+                }
+                
+            }
             
 
+            /*
             for(i=0; i<runs && reached_sections>0; i++){
 
                 
                 uint32_t section_from = sections_per_run * i;
                 uint32_t offset_remover = accum_log[section_from];
                 printf("Run %u - > starting from section %u ||| removing offset %u\n", i, section_from, offset_remover);
-                kernel_compact_hits<<<sections_per_run * blocks_per_section, 512>>>(&ptr_auxiliary_hit_memory[section_from], &ptr_hits_log_extra[section_from], ptr_accum_log, blocks_per_section, extra_large_mem_block, ptr_copy_place_diagonals, offset_remover);
+                kernel_compact_hits<<<sections_per_run * blocks_per_section, 512>>>(&ptr_auxiliary_hit_memory[0], &ptr_hits_log_extra[section_from], ptr_accum_log, blocks_per_section, extra_large_mem_block, ptr_copy_place_diagonals, offset_remover);
                 ret = cudaDeviceSynchronize();
                 if(ret != cudaSuccess){ fprintf(stderr, "Could not compact hits on second stage run %u. Error: %d\n", i, ret); exit(-1); }
 
@@ -1121,16 +1185,34 @@ int main(int argc, char ** argv)
                 if(ret != cudaSuccess){ fprintf(stderr, "Could not memcpy the compacted hits on second stage run %u. Error: %d\n", i, ret); exit(-1); }
                 total_hits_copied += accum_log[sections_per_run * (i+1)];
             }
+            */
 
             // Add together total number of hits
             n_hits_found += second_hits_found;
 
-
-            
+            printf("Found second hits of %" PRIu32" hits\n", second_hits_found);
+            printf("Found total of %" PRIu32" hits\n", n_hits_found);
+            /*
             uint64_t * compacted_hits = (uint64_t *) dump_memory_region((char *)ptr_device_diagonals, n_hits_found * sizeof(uint64_t));
             for(i=0; i<n_hits_found; i++){
-                printf("[showinghit] %" PRIu64"\n", compacted_hits[i]);
+                //printf("[showinghit] %" PRIu64"\n", compacted_hits[i]);
+
+                uint64_t mask_d  = 0xFFFFFFFF00000000; 
+                uint64_t mask_px = 0x00000000FFFFFFFF;
+                uint32_t d_curr = (uint32_t) ((compacted_hits[i] & mask_d) >> 32);
+                uint32_t px = (uint32_t) (compacted_hits[i] & mask_px);
+                uint32_t py = ref_len + px - d_curr; //values_y[index]; 
+
+                printf("[prefiltered] %u %u\n", px, py);
+                
+                if(compacted_hits[i] != 0xFFFFFFFFFFFFFFFF && (px > 26576615 || py > 37502051))
+                    printf("[aftercompactstage] i have px: %u py: %u\n", px, py);
+
             }
+            */
+            
+            
+            
             
 
 
@@ -1197,7 +1279,7 @@ int main(int argc, char ** argv)
             fprintf(stdout, "[INFO] hits Q-R t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
             time_seconds = 0;
             time_nanoseconds = 0;
-            fprintf(stdout, "[INFO] Generated %" PRIu32" hits on split %d -> (%d%%)[%u,%u]{%u,%u}\n", n_hits_found + second_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len), pos_in_query, pos_in_ref, items_read_x, items_read_y);
+            fprintf(stdout, "[INFO] Generated %" PRIu32" hits on split %d -> (%d%%)[%u,%u]{%u,%u}\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len), pos_in_query, pos_in_ref, items_read_x, items_read_y);
 #endif 
             
 
@@ -1244,11 +1326,18 @@ int main(int argc, char ** argv)
             //ret = cudaMemset(pre_alloc, 0x00000000, max_hits * sizeof(uint64_t));
 
 
-            // CURRENTLY FAILING HERE BECAUSE THE SIZE OF ptr_device_diagonals AND n_hits_found DOES NOT ADD UP
+            
             mergesort(ptr_device_diagonals, n_hits_found, mgpu::less_t<uint64_t>(), context);
 
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "MODERNGPU sorting failed on query-ref hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
+
+            /*
+            uint64_t * sorted_hits = (uint64_t *) dump_memory_region((char *)ptr_device_diagonals, n_hits_found * sizeof(uint64_t));
+            for(i=0; i<n_hits_found; i++){
+                printf("[aftersort] %" PRIu64"\n", sorted_hits[i]);
+            }
+            */
 
 #ifdef SHOWTIME
             clock_gettime(CLOCK_MONOTONIC, &HD_end);
@@ -1268,9 +1357,11 @@ int main(int argc, char ** argv)
             //kernel_filter_hits<<<n_hits_found/(32*32)+1, 32>>>(ptr_device_diagonals, ref_len, n_hits_found);
             //cudaProfilerStart();
 
-
+            // This was fixed with the compacting--------------------
+            // But There is still a small bug where few "bad" hits get written (ca. 270)
             // I KNOW WHY LESS HITS/FRAGS ARE BEING GENERATED:
             // THE FILTERING IS BEING APPLIED TO THE N_HITS_FOUND REGION, BUT THE HITS ARE WRITTEN SCATTERED IN BLOCKS IN THE PARALLEL KERNEL
+            // ------------------------------------------------------
 
             kernel_filter_hits_parallel<<<n_hits_found/(64)+1, 64>>>(ptr_device_diagonals, ref_len, n_hits_found);
             ret = cudaDeviceSynchronize();
@@ -1282,6 +1373,14 @@ int main(int argc, char ** argv)
 
 
             uint32_t n_hits_kept = filter_hits_cpu(diagonals, filtered_hits_x, filtered_hits_y, n_hits_found);
+
+            /*
+            for(i=0;i<n_hits_kept;i++){
+                if(filtered_hits_x[i] > 26576615 || filtered_hits_y[i] > 37502051)
+                    printf("i have filteredhit %u %u\n", filtered_hits_x[i], filtered_hits_y[i]);
+                
+            }
+            */
             
             //uint32_t n_hits_kept = filter_hits_forward(diagonals, indexing_numbers, hits, filtered_hits_x, filtered_hits_y, n_hits_found);
 
@@ -1326,6 +1425,9 @@ int main(int argc, char ** argv)
 #ifdef SHOWTIME
             clock_gettime(CLOCK_MONOTONIC, &HD_start);
 #endif
+
+            // CHECK MEMORY REGIONS because i rearranged them in the last stages
+            // maybe they are overlapping now
             address_checker = 0;
             base_ptr = &data_mem[0];
             ptr_seq_dev_mem = (char *) (base_ptr);
@@ -1386,6 +1488,8 @@ int main(int argc, char ** argv)
 
             ret = cudaMemcpy(host_left_offset, ptr_left_offset, n_hits_kept * sizeof(uint32_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back left offset. Error: %d\n", ret); exit(-1); }
             ret = cudaMemcpy(host_right_offset, ptr_right_offset, n_hits_kept * sizeof(uint32_t), cudaMemcpyDeviceToHost); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy back right offset. Error: %d\n", ret); exit(-1); }
+            ret = cudaDeviceSynchronize();
+            if(ret != cudaSuccess){ fprintf(stderr, "Error copying offsets back on forward frags. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
 #ifdef SHOWTIME
             clock_gettime(CLOCK_MONOTONIC, &HD_end);

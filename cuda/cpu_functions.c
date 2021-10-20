@@ -473,7 +473,12 @@ uint32_t filter_hits_cpu(uint64_t * diagonals, uint32_t * filtered_hits_x, uint3
             filtered_hits_x[t_kept] = (uint32_t) ((diagonals[i] & 0xFFFFFFFF00000000) >> 32);
             filtered_hits_y[t_kept] = (uint32_t) (diagonals[i] & 0x00000000FFFFFFFF);
             
-            ++t_kept;
+            // WARNING: This conditional is here right now because I am not able to find where
+            // few "bad" hits originate in the gpu matching
+            // OK it seems this is not the problem, there are some malformed hits 
+            // but these do not take maximum value but rather just a value larger than the
+            // length of the sequence
+            if(filtered_hits_x[t_kept] < 0xFFFFFFFF && filtered_hits_y[t_kept] < 0xFFFFFFFF) ++t_kept;
         }
     }
     return t_kept;

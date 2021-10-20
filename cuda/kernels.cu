@@ -233,7 +233,8 @@ __global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t *
                 mingap = __shfl_sync(0xFFFFFFFF, mingap, 0);
 
                 // And write hits
-                if(hit == 1) ptr_to_write_section[accumulated + threadIdx.x - mingap] = current_save;
+                if(hit == 1)
+                    ptr_to_write_section[accumulated + threadIdx.x - mingap] = current_save;
 
                 // Distribute number of matches
                 for (int offset = 16; offset > 0; offset = offset >> 1)
@@ -456,6 +457,7 @@ __device__ void right_extend(int32_t warp_pos_x_right, int32_t warp_pos_y_right,
 
     while(score > 0 && (warp_pos_x_right + 32) < (int32_t) x_lim && (warp_pos_y_right + 32) < (int32_t) y_lim)
     {
+        //if(threadIdx.x==0) printf("Accesing %d\n", thre_pos_x);
         char v_x = seq_x[thre_pos_x];
         char v_y = seq_y[thre_pos_y];
 
