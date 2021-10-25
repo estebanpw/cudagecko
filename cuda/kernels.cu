@@ -2,6 +2,8 @@
 
 #define MIN_P_IDENT 80
 
+// LOOK UP TABLE
+
 __constant__ uint64_t pow4[33]={1L, 4L, 16L, 64L, 256L, 1024L, 4096L, 16384L, 65536L,
     262144L, 1048576L, 4194304L, 16777216L, 67108864L, 268435456L, 1073741824L, 4294967296L,
     17179869184L, 68719476736L, 274877906944L, 1099511627776L, 4398046511104L, 17592186044416L,
@@ -60,7 +62,7 @@ __global__ void kernel_filter_hits(uint64_t * diagonals_merged, uint32_t ref_len
     uint64_t mask_d  = 0xFFFFFFFF00000000; 
     uint64_t mask_px = 0x00000000FFFFFFFF;
 
-    uint32_t index = blockIdx.x * 1024 + threadIdx.x * 32;
+    uint32_t index = blockIdx.x * 1024 + threadIdx.x * blockDim.x;
     if(index >= n_hits_found) return;
 
     uint64_t v = diagonals_merged[index];
@@ -71,7 +73,7 @@ __global__ void kernel_filter_hits(uint64_t * diagonals_merged, uint32_t ref_len
 
     diagonals_merged[index] = res;
 
-    for(int i=1; i<32; i++){
+    for(int i=1; i<blockDim.x; i++){
 
         if(index + i >= n_hits_found) return;
 
@@ -195,7 +197,7 @@ __global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t *
     uint32_t misaligned = word_y_id % 256;
     if(misaligned < word_y_id) word_y_id = word_y_id - misaligned; // Make it aligned
 
-    uint32_t i = 0, total_hits = 0;
+    uint32_t i = 0;
 
     uint64_t current_save;
 
@@ -551,6 +553,7 @@ __global__ void kernel_frags_forward_register(uint32_t * h_p1, uint32_t * h_p2, 
 
 
 }
+
 
 __global__ void kernel_frags_forward_per_thread(uint32_t * h_p1, uint32_t * h_p2, uint32_t * left_offset, uint32_t * right_offset, const char * seq_x, const char * seq_y, uint32_t query_len, uint32_t ref_len, uint32_t x_seq_off, uint32_t y_seq_off, uint32_t x_lim, uint32_t y_lim, uint32_t n_hits){
 
