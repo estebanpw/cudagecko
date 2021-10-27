@@ -15,21 +15,21 @@ fi
 BINDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 
-myfactor="0.125"
+myfactor="0.15"
 
 $BINDIR/gpu_cuda_workflow -query $SEQX -ref $SEQY -dev $DEV -len $LEN -factor $myfactor 2>error
 
 run=1
 
-outtext="[SUCCESS] Completed with factor 0.125"
-
 
 S1="Reached maximum limit of hits"
 S2="Not enough memory in pool"
+S3="Error generating hits"
 
-if grep -qF "$S1" error || grep -qF "$S2" error ; then
+if grep -qF "$S1" error || grep -qF "$S2" error || grep -qF "$S3" error ; then
 
-	while grep -qF "$S1" error || grep -qF "$S2" error ; do
+	myfactor="0.12"
+	while grep -qF "$S1" error || grep -qF "$S2" error || grep -qF "$S3" error ; do
 		
 		cat error
 		echo "[WARNING] Restarting execution with factor=$myfactor"
@@ -52,6 +52,10 @@ elif [ $(wc -c error | awk '{print $1}') -gt 1 ]; then
 
 	echo "[ERROR] Encountered the following error:"
 	cat error
+
+else
+
+	outtext="[SUCCESS] Completed with factor $myfactor"
 
 fi
 

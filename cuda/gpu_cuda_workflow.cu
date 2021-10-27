@@ -290,7 +290,7 @@ int main(int argc, char ** argv)
         if(ret != cudaSuccess){ fprintf(stderr, "Could not copy reference sequence to device for reversing. Error: %d\n", ret); exit(-1); }
     }
     ret = cudaDeviceSynchronize();
-    threads_number = 32;
+    //threads_number = 32;
 
 
 #ifdef SHOWTIME
@@ -510,6 +510,13 @@ int main(int argc, char ** argv)
             // Recopy x words because they were overwritten in the hits generation
             ret = cudaMemcpy(ptr_keys, dict_x_keys, items_read_x*sizeof(uint64_t), cudaMemcpyHostToDevice);
             ret = cudaMemcpy(ptr_values, dict_x_values, items_read_x*sizeof(uint32_t), cudaMemcpyHostToDevice);
+            // Memset everything that comes after the uploaded keys in case it was overwritten
+            
+            if(items_read_x < words_at_once){
+                ret = cudaMemset(&ptr_keys[items_read_x], 0xFFFFFFFF, (words_at_once-items_read_x) * sizeof(uint64_t));
+                ret = cudaMemset(&ptr_values[items_read_x], 0xFFFFFFFF, (words_at_once-items_read_x) * sizeof(uint32_t));
+            }
+            
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Could not copy words back in posterior iterations. Error: %d\n", ret); exit(-1); }
 
@@ -622,7 +629,7 @@ int main(int argc, char ** argv)
             //////////////////// END 
 
             uint64_t hits_in_first_mem_block = max_hits / 4;
-            uint64_t hits_in_second_mem_block = max_hits + 3 * (max_hits/4) - 1000*1000; // SOme has to be removed due to all allocated variables on pool (besides words and seq) TODO: allocate them at the beginning
+            uint64_t hits_in_second_mem_block = max_hits + 3 * (max_hits/4) - 1000*1000; // Some has to be removed due to all allocated variables on pool (besides words and seq) TODO: allocate them at the beginning
             uint64_t mem_block = (hits_in_first_mem_block)/n_blocks_hits;
             uint64_t max_extra_sections = n_blocks_hits * 0.1;
             uint64_t extra_large_mem_block = (hits_in_second_mem_block)/max_extra_sections;
@@ -646,13 +653,15 @@ int main(int argc, char ** argv)
             kernel_find_leftmost_items<<<1, 1>>>(ptr_keys, ptr_leftmost_key_x, ptr_keys_2, ptr_leftmost_key_y, items_read_x, items_read_y);
             ret = cudaDeviceSynchronize();
             uint32_t leftmost_key_x, leftmost_key_y;
-            if(ret != cudaSuccess){ fprintf(stderr, "Error searching true leftmost elements on device. Error: %d\n", ret); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stderr, "Error searching true leftmost elements on device on forward strand. Error: %d\n", ret); exit(-1); }
             ret = cudaMemcpy(&leftmost_key_x, ptr_leftmost_key_x, sizeof(uint32_t), cudaMemcpyDeviceToHost);
-            if(ret != cudaSuccess){ fprintf(stderr, "Downloading leftmost element X. Error: %d\n", ret); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stderr, "Downloading leftmost element X on forward strand. Error: %d\n", ret); exit(-1); }
             ret = cudaMemcpy(&leftmost_key_y, ptr_leftmost_key_y, sizeof(uint32_t), cudaMemcpyDeviceToHost);
-            if(ret != cudaSuccess){ fprintf(stderr, "Downloading leftmost element Y. Error: %d\n", ret); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stderr, "Downloading leftmost element Y on forward strand. Error: %d\n", ret); exit(-1); }
 
             printf("[DEBUG] Leftmost elements are: %u, %u out of [%u, %u]\n", leftmost_key_x, leftmost_key_y, items_read_x, items_read_y);
+            if(leftmost_key_x >= items_read_x || leftmost_key_y >= items_read_y){ fprintf(stderr, "Bad binary search of leftmost items on forward strand. %u, %u out of [%u, %u]\n",  leftmost_key_x, leftmost_key_y, items_read_x, items_read_y); exit(-1); }
+
 
             address_checker = realign_address(address_checker, 8);
             ptr_device_diagonals = (uint64_t *) (base_ptr + address_checker);
@@ -663,11 +672,11 @@ int main(int argc, char ** argv)
 
             ret = cudaMemset(ptr_device_diagonals, 0xFFFFFFFF, sizeof(uint64_t)*hits_in_first_mem_block);
             ret = cudaDeviceSynchronize();
-            if(ret != cudaSuccess){ fprintf(stderr, "Setting to 0xFF..FF the device diagonals. Error: %d\n", ret); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stderr, "Setting to 0xFF..FF the device diagonals on forward strand. Error: %d\n", ret); exit(-1); }
             
             ret = cudaMemset(ptr_auxiliary_hit_memory, 0xFFFFFFFF, sizeof(uint64_t)*hits_in_second_mem_block);
             ret = cudaDeviceSynchronize();
-            if(ret != cudaSuccess){ fprintf(stderr, "Setting to 0xFF..FF the extra device diagonals. Error: %d\n", ret); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stderr, "Setting to 0xFF..FF the extra device diagonals on forward strand. Error: %d\n", ret); exit(-1); }
 
             kernel_hits<<<n_blocks_hits, 32>>>(ptr_keys, ptr_keys_2, ptr_values, ptr_values_2, ptr_device_diagonals, (int32_t) mem_block, 
                 leftmost_key_x, leftmost_key_y, ptr_device_error, ref_len, ptr_hits_log, ptr_atomic_distributer, ptr_auxiliary_hit_memory,
@@ -675,14 +684,14 @@ int main(int argc, char ** argv)
 
             ret = cudaDeviceSynchronize();
 
-            if(ret != cudaSuccess){ fprintf(stderr, "Fatal error generating hits on device. Error: %d\n", ret); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stdout, "Fatal error generating hits on device on forward strand. Error: %d\n", ret); fflush(stdout); fprintf(stderr, "Fatal error generating hits on device on forward strand. Error: %d\n", ret); exit(-1); }
             int32_t device_error;
             ret = cudaMemcpy(&device_error, ptr_device_error, sizeof(int32_t), cudaMemcpyDeviceToHost);
             int32_t reached_sections = -1;
             ret = cudaMemcpy(&reached_sections, ptr_atomic_distributer, sizeof(int32_t), cudaMemcpyDeviceToHost);
-            if(ret != cudaSuccess){ fprintf(stderr, "Downloading error status on hits generation. Error: %d\n", ret); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stderr, "Downloading error status on hits generation on forward strand. Error: %d\n", ret); exit(-1); }
             printf("[DEBUG] debug from error hits : %d [reached: %d]\n", device_error, reached_sections);
-            if(device_error < 0) { fprintf(stderr, "Error generating hits on device. Error: %d\n", device_error);  }
+            if(device_error < 0) { fprintf(stderr, "Error generating hits on device on forward strand. Error: %d\n", device_error);  }
 
             ////////////////////////////////////////////////////////////////////////////////
             // Hits compacting
@@ -944,10 +953,10 @@ int main(int argc, char ** argv)
             // And copy all required stuff
             ret = cudaMemcpy(ptr_seq_dev_mem, &query_seq_host[pos_in_query-words_at_once], MIN(query_len - (pos_in_query - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy query sequence to device for frags. Error: %d\n", ret); exit(-1); }
             ret = cudaMemcpy(ptr_seq_dev_mem_aux, &ref_seq_host[pos_in_ref-words_at_once], MIN(ref_len - (pos_in_ref - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device for frags. Error: %d\n", ret); exit(-1); }
-            ret = cudaMemcpy(ptr_device_filt_hits_x, filtered_hits_x, n_hits_kept * sizeof(uint32_t), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy filtered hits x in device. Error: %d\n", ret); exit(-1); }
-            ret = cudaMemcpy(ptr_device_filt_hits_y, filtered_hits_y, n_hits_kept * sizeof(uint32_t), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy filtered hits y in device. Error: %d\n", ret); exit(-1); }
-            ret = cudaMemset(ptr_left_offset, 0x0, n_hits_kept * sizeof(uint32_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy left offset in device. Error: %d\n", ret); exit(-1); }
-            ret = cudaMemset(ptr_right_offset, 0x0, n_hits_kept * sizeof(uint32_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy right offset in device. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(ptr_device_filt_hits_x, filtered_hits_x, n_hits_kept * sizeof(uint32_t), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy filtered hits x in device on forward strand. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemcpy(ptr_device_filt_hits_y, filtered_hits_y, n_hits_kept * sizeof(uint32_t), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy filtered hits y in device on forward strand. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemset(ptr_left_offset, 0x0, n_hits_kept * sizeof(uint32_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy left offset in device on forward strand. Error: %d\n", ret); exit(-1); }
+            ret = cudaMemset(ptr_right_offset, 0x0, n_hits_kept * sizeof(uint32_t)); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy right offset in device on forward strand. Error: %d\n", ret); exit(-1); }
             ret = cudaDeviceSynchronize();
 
             number_of_blocks = (n_hits_kept / n_frags_per_block) + 1;
@@ -1010,6 +1019,9 @@ int main(int argc, char ** argv)
             // FORWARD strand in the reference BUT REVERSED !
             ////////////////////////////////////////////////////////////////////////////////
 
+            // TODO remove this debug line
+            ret = cudaMemset(base_ptr, 0xFFFFFFFF, (words_at_once-items_read_x) * sizeof(char));
+
             uint32_t items_read_y = MIN(ref_len - pos_in_ref, words_at_once);
 
 #ifdef SHOWTIME
@@ -1031,8 +1043,16 @@ int main(int argc, char ** argv)
             ret = cudaMemcpy(ptr_seq_dev_mem, &ref_rev_seq_host[pos_in_ref], items_read_y, cudaMemcpyHostToDevice);
             if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device reversed. Error: %d\n", ret); exit(-1); }
 
+            // Recopy because it gets overwritten in the generation of hits
             ret = cudaMemcpy(ptr_keys, dict_x_keys, items_read_x*sizeof(uint64_t), cudaMemcpyHostToDevice);
             ret = cudaMemcpy(ptr_values, dict_x_values, items_read_x*sizeof(uint32_t), cudaMemcpyHostToDevice);
+            // Memset everything that comes after the uploaded keys in case it was overwritten
+            
+            if(items_read_x < words_at_once){
+                ret = cudaMemset(&ptr_keys[items_read_x], 0xFFFFFFFF, (words_at_once-items_read_x) * sizeof(uint64_t));
+                ret = cudaMemset(&ptr_values[items_read_x], 0xFFFFFFFF, (words_at_once-items_read_x) * sizeof(uint32_t));
+            }
+            
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Could not copy words back in posterior iterations for the reverse. Error: %d\n", ret); exit(-1); }
 
@@ -1152,6 +1172,7 @@ int main(int argc, char ** argv)
             if(ret != cudaSuccess){ fprintf(stderr, "Downloading leftmost element Y on the reverse. Error: %d\n", ret); exit(-1); }
 
             printf("[DEBUG] Leftmost elements are: %u, %u out of [%u, %u]\n", leftmost_key_x, leftmost_key_y, items_read_x, items_read_y);
+            if(leftmost_key_x >= items_read_x || leftmost_key_y >= items_read_y){ fprintf(stderr, "Bad binary search of leftmost items on reverse strand. %u, %u out of [%u, %u]\n",  leftmost_key_x, leftmost_key_y, items_read_x, items_read_y); exit(-1); }
 
             address_checker = realign_address(address_checker, 8);
             ptr_device_diagonals = (uint64_t *) (base_ptr + address_checker);
@@ -1175,7 +1196,7 @@ int main(int argc, char ** argv)
 
             ret = cudaDeviceSynchronize();
 
-            if(ret != cudaSuccess){ fprintf(stderr, "Fatal error generating hits on device on reverse. Error: %d\n", ret); exit(-1); }
+            if(ret != cudaSuccess){ fprintf(stdout, "Fatal error generating hits on device on forward strand. Error: %d\n", ret); fflush(stdout); fprintf(stderr, "Fatal error generating hits on device on reverse. Error: %d\n", ret); exit(-1); }
             int32_t device_error;
             ret = cudaMemcpy(&device_error, ptr_device_error, sizeof(int32_t), cudaMemcpyDeviceToHost);
             int32_t reached_sections = -1;

@@ -7,6 +7,7 @@ void terror(const char * s) {
 
 void build_frag(uint32_t * xStart, uint32_t * xEnd, uint32_t * yStart, uint32_t * yEnd, uint32_t * curr_l, char strand,
     uint32_t * filtered_hits_x, uint32_t * filtered_hits_y, uint32_t * host_left_offset, uint32_t * host_right_offset, uint32_t id){
+    
     if(strand == 'f'){
         *xStart = filtered_hits_x[id] - host_left_offset[id];
         *xEnd = filtered_hits_x[id] + host_right_offset[id];
@@ -18,6 +19,7 @@ void build_frag(uint32_t * xStart, uint32_t * xEnd, uint32_t * yStart, uint32_t 
         *yStart = filtered_hits_y[id] - host_left_offset[id];
         *yEnd = filtered_hits_y[id] + host_right_offset[id];
     }
+    
     //printf("Fraggo %u %u %u %u\n", *xStart, *xEnd, *yStart, *yEnd);
     *curr_l = *xEnd - *xStart;
 }
