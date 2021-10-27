@@ -15,6 +15,7 @@
 
 
 void print_header(FILE * out, uint32_t query_len, uint32_t ref_len);
+float factor_chooser(uint64_t total_memory);
 uint64_t memory_allocation_chooser(uint64_t total_memory);
 char * dump_memory_region(char * ptr_pointer, uint64_t size);
 
@@ -26,7 +27,7 @@ int main(int argc, char ** argv)
     uint64_t time_seconds = 0, time_nanoseconds = 0;
 #endif
     uint32_t i, min_length = 64, max_frequency = 0, n_frags_per_block = 32;
-    float factor = 0.15;
+    float factor = 0.14;
     int fast = 0; // sensitive is default
     unsigned selected_device = 0;
     FILE * query = NULL, * ref = NULL, * out = NULL;
@@ -70,6 +71,9 @@ int main(int argc, char ** argv)
 
     // Calculate how much ram we can use for every chunk
     uint64_t effective_global_ram =  (global_device_RAM - memory_allocation_chooser(global_device_RAM)); //Minus 100 to 300 MBs for other stuff
+
+    // Retune factor
+    factor = factor_chooser(global_device_RAM);
 
     // We will do the one-time alloc here
     // i.e. allocate a pool once and used it manually
@@ -1533,6 +1537,13 @@ void print_header(FILE * out, uint32_t query_len, uint32_t ref_len){
     fprintf(out, "Type,xStart,yStart,xEnd,yEnd,strand(f/r),block,length,score,ident,similarity,%%ident,SeqX,SeqY\n");
 }
 
+float factor_chooser(uint64_t total_memory)
+{
+    if(total_memory <=  5000000000) return 0.14;
+    if(total_memory <=  7000000000) return 0.11;
+    if(total_memory <= 10000000000) return 0.07;
+    if(total_memory <= 13000000000) return 0.05;
+}
 
 uint64_t memory_allocation_chooser(uint64_t total_memory)
 {
