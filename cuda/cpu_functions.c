@@ -202,7 +202,7 @@ void filter_and_write_frags(uint32_t * filtered_hits_x, uint32_t * filtered_hits
 
 }
 
-uint32_t generate_hits_fast(uint32_t max_hits, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
+uint32_t generate_hits_fast(uint32_t max_hits, uint64_t * diagonals, uint64_t * keys_x, 
     uint64_t * keys_y, uint32_t * values_x, uint32_t * values_y, uint32_t items_x, uint32_t items_y, uint32_t query_len, uint32_t ref_len){
 
     // Nota: para generar TODOS los hits hay que tener en cuenta que si hay hits repetidos en
@@ -226,8 +226,8 @@ uint32_t generate_hits_fast(uint32_t max_hits, uint64_t * diagonals, Hit * hits,
 
             // This is a hit
             //printf("Made hit: ");
-            hits[n_hits_found].p1 = values_x[id_x];
-            hits[n_hits_found].p2 = values_y[id_y];
+            //hits[n_hits_found].p1 = values_x[id_x];
+            //hits[n_hits_found].p2 = values_y[id_y];
             // Compute diagonal value with associated x value -> (x - y) * Ld + x 
             // Le estoy sumando el diff_offset (i.e. lo mas largo que puede ser la y) para que siempre sean positivos (como x es positivo)
             // pues solo la y resta
@@ -315,7 +315,7 @@ uint32_t generate_hits_quadratic(uint32_t words_at_once, uint64_t * diagonals, H
 
 
 
-uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
+uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, uint64_t * keys_x, 
     uint64_t * keys_y, uint32_t * values_x, uint32_t * values_y, uint32_t items_x, uint32_t items_y, uint32_t query_len, uint32_t ref_len, uint32_t max_frequency, int fast){
 
     // Nota: para generar TODOS los hits hay que tener en cuenta que si hay hits repetidos en
@@ -386,7 +386,7 @@ uint32_t generate_hits_sensitive(uint32_t max_hits, uint64_t * diagonals, Hit * 
 
 }
 
-uint32_t generate_hits_sensitive_avx512(uint32_t max_hits, uint64_t * diagonals, Hit * hits, uint64_t * keys_x, 
+uint32_t generate_hits_sensitive_avx512(uint32_t max_hits, uint64_t * diagonals, uint64_t * keys_x, 
     uint64_t * keys_y, uint32_t * values_x, uint32_t * values_y, uint32_t items_x, uint32_t items_y, uint32_t query_len, uint32_t ref_len){
 
     max_hits -= 8; // This is because in the vectorised code we load 8 values without checking array boundaries

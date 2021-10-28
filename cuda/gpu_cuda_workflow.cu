@@ -27,7 +27,7 @@ int main(int argc, char ** argv)
     uint64_t time_seconds = 0, time_nanoseconds = 0;
 #endif
     uint32_t i, min_length = 64, max_frequency = 0, n_frags_per_block = 32;
-    float factor = 0.14;
+    float factor = -1;
     int fast = 0; // sensitive is default
     unsigned selected_device = 0;
     FILE * query = NULL, * ref = NULL, * out = NULL;
@@ -73,7 +73,8 @@ int main(int argc, char ** argv)
     uint64_t effective_global_ram =  (global_device_RAM - memory_allocation_chooser(global_device_RAM)); //Minus 100 to 300 MBs for other stuff
 
     // Retune factor
-    factor = factor_chooser(global_device_RAM);
+    if(factor < 0) // Only if left by default
+        factor = factor_chooser(global_device_RAM);
 
     // We will do the one-time alloc here
     // i.e. allocate a pool once and used it manually
@@ -169,19 +170,23 @@ int main(int argc, char ** argv)
     // How about one big alloc (save ~3 seconds on mallocs and improves transfer times)
     char * host_pinned_mem, * base_ptr_pinned;
 
-    // [TODO] revisit all pinned memory 
     // We need for pinned memory:
-    // seqx             => words_at_once
-    // seqy             => words_at_once
-    // seqyrev          => words_at_once
+    // seqx             => query_len
+    // seqy             => ref_len
+    // seqyrev          => ref_len
     // dict_x_keys      => words_at_once * sizeof(uint64_t)
     // dict_x_values    => words_at_once * sizeof(uint32_t)
-    
-    
-    uint64_t pinned_bytes_on_host = words_at_once * (sizeof(uint64_t) * (2) + sizeof(uint32_t) * (2));
-    pinned_bytes_on_host = pinned_bytes_on_host + max_hits * (sizeof(uint64_t) * (1) + sizeof(uint32_t) * (8));
-    pinned_bytes_on_host = pinned_bytes_on_host + sizeof(char) * (query_len + 2*ref_len);
+    // dict_y_keys      => words_at_once * sizeof(uint64_t) [ONLY FOR CPU PROCESSING]
+    // dict_y_values    => words_at_once * sizeof(uint32_t) [ONLY FOR CPU PROCESSING]
+    // filtered_hits_x  => max_hits * sizeof(uint32_t)
+    // filtered_hits_y  => max_hits * sizeof(uint32_t)
+    // host_left        => max_hits * sizeof(uint32_t)
+    // host_right       => max_hits * sizeof(uint32_t)
+    // diagonals        => max_hits * sizeof(uint64_t)
+
+    uint64_t pinned_bytes_on_host = query_len + 2*ref_len + words_at_once*4 + words_at_once*8 + max_hits*8 + max_hits*16;
     pinned_bytes_on_host += 1024*1024; // Adding 1 MB for the extra padding in the realignments
+    if(fast != 0) pinned_bytes_on_host += words_at_once*8 + words_at_once*4;
     uint64_t pinned_address_checker = 0;
 
     fprintf(stdout, "[INFO] Allocating on host %" PRIu64" bytes (i.e. %" PRIu64" MBs)\n", pinned_bytes_on_host, pinned_bytes_on_host / (1024*1024));
@@ -339,19 +344,24 @@ int main(int argc, char ** argv)
     dict_x_values = (uint32_t *) (base_ptr_pinned + pinned_address_checker);
     pinned_address_checker = realign_address(pinned_address_checker + words_at_once * sizeof(uint32_t), 8);
 
-    dict_y_keys = (uint64_t *) (base_ptr_pinned + pinned_address_checker);
-    pinned_address_checker = realign_address(pinned_address_checker + words_at_once * sizeof(uint64_t), 4);
+    if(fast != 0){
+        dict_y_keys = (uint64_t *) (base_ptr_pinned + pinned_address_checker);
+        pinned_address_checker = realign_address(pinned_address_checker + words_at_once * sizeof(uint64_t), 4);
 
-    dict_y_values = (uint32_t *) (base_ptr_pinned + pinned_address_checker);
-    pinned_address_checker = realign_address(pinned_address_checker + words_at_once * sizeof(uint32_t), 4);
+        dict_y_values = (uint32_t *) (base_ptr_pinned + pinned_address_checker);
+        pinned_address_checker = realign_address(pinned_address_checker + words_at_once * sizeof(uint32_t), 4);
+    }
 
     // These are now depending on the number of hits
-    Hit * hits; // TODO I dont think this is used anymore
     uint32_t * filtered_hits_x, * filtered_hits_y;
 
+    /*
+    // TODO remove
+    Hit * hits;
     pinned_address_checker = realign_address(pinned_address_checker, 8);
     hits = (Hit *) (base_ptr_pinned + pinned_address_checker);
     pinned_address_checker = realign_address(pinned_address_checker + max_hits * sizeof(Hit), 4);
+    */
 
     filtered_hits_x = (uint32_t *) (base_ptr_pinned + pinned_address_checker);
     pinned_address_checker = realign_address(pinned_address_checker + max_hits * sizeof(uint32_t), 4);
@@ -606,21 +616,21 @@ int main(int argc, char ** argv)
                 if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers for vectorized hit generation on forward (1). Error: %d\n", ret); exit(-1); }
                 ret = cudaMemcpy(dict_y_values, ptr_values_2, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
                 if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers for vectorized hit generation on forward (2). Error: %d\n", ret); exit(-1); }
-                n_hits_found = generate_hits_sensitive_avx512(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
+                n_hits_found = generate_hits_sensitive_avx512(max_hits, diagonals, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             }
             else if(fast == 2){
                 ret = cudaMemcpy(dict_y_keys, ptr_keys_2, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
                 if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers for fast hit generation on forward (1). Error: %d\n", ret); exit(-1); }
                 ret = cudaMemcpy(dict_y_values, ptr_values_2, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
                 if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers for fast hit generation on forward (2). Error: %d\n", ret); exit(-1); }
-                n_hits_found = generate_hits_fast(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);     
+                n_hits_found = generate_hits_fast(max_hits, diagonals, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);     
             }
             else if(fast == 1){
                 ret = cudaMemcpy(dict_y_keys, ptr_keys_2, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
                 if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers for fast hit generation on forward (1). Error: %d\n", ret); exit(-1); }
                 ret = cudaMemcpy(dict_y_values, ptr_values_2, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
                 if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers for fast hit generation on forward (2). Error: %d\n", ret); exit(-1); }
-                n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency, fast);
+                n_hits_found = generate_hits_sensitive(max_hits, diagonals, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency, fast);
             }
 //#ifdef AVX512CUSTOM
 //                n_hits_found = generate_hits_sensitive_avx512(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
@@ -708,7 +718,7 @@ int main(int argc, char ** argv)
                 int32_t reached_sections = -1;
                 ret = cudaMemcpy(&reached_sections, ptr_atomic_distributer, sizeof(int32_t), cudaMemcpyDeviceToHost);
                 if(ret != cudaSuccess){ fprintf(stderr, "Downloading error status on hits generation on forward strand. Error: %d\n", ret); exit(-1); }
-                if(device_error < 0) { fprintf(stderr, "Error generating hits on device on forward strand. Error: %d\n", device_error);  }
+                if(device_error < 0) { fprintf(stderr, "Error generating hits on device on forward strand. Error: %d\n", device_error); exit(-1); }
 
                 ////////////////////////////////////////////////////////////////////////////////
                 // Hits compacting
@@ -738,8 +748,6 @@ int main(int argc, char ** argv)
                 // Upload accumulated (overwrite sequence data since its no longer needed)
                 uint32_t * ptr_accum_log = (uint32_t *) (&data_mem[0]);
                 ret = cudaMemcpy(ptr_accum_log, accum_log, sizeof(uint32_t)*n_blocks_hits, cudaMemcpyHostToDevice);
-
-                printf("[DEBUG] There will be %u runs on first part. [total blocks: %u, total threads: %u]\n", runs, n_blocks_hits * blocks_per_section, 512);
 
                 kernel_compact_hits<<<n_blocks_hits * blocks_per_section, 512>>>(ptr_device_diagonals, ptr_hits_log, ptr_accum_log, blocks_per_section, mem_block, ptr_copy_place_diagonals, 0);
                 ret = cudaDeviceSynchronize();
@@ -1072,20 +1080,20 @@ int main(int argc, char ** argv)
                 if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers for vectorized hit generation on reverse (1). Error: %d\n", ret); exit(-1); }
                 ret = cudaMemcpy(dict_y_values, ptr_values_2, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
                 if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers for vectorized hit generation on reverse (2). Error: %d\n", ret); exit(-1); }
-                n_hits_found = generate_hits_sensitive_avx512(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
+                n_hits_found = generate_hits_sensitive_avx512(max_hits, diagonals, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             }
             else if(fast == 2){
                 ret = cudaMemcpy(dict_y_keys, ptr_keys_2, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
                 if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers for fast hit generation on reverse (1). Error: %d\n", ret); exit(-1); }
                 ret = cudaMemcpy(dict_y_values, ptr_values_2, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
                 if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers for fast hit generation on reverse (2). Error: %d\n", ret); exit(-1); }
-                n_hits_found = generate_hits_fast(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
+                n_hits_found = generate_hits_fast(max_hits, diagonals, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len);
             }else if(fast == 1){
                 ret = cudaMemcpy(dict_y_keys, ptr_keys_2, items_read_y*sizeof(uint64_t), cudaMemcpyDeviceToHost);
                 if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers for fast hit generation on reverse (1). Error: %d\n", ret); exit(-1); }
                 ret = cudaMemcpy(dict_y_values, ptr_values_2, items_read_y*sizeof(uint32_t), cudaMemcpyDeviceToHost);
                 if(ret != cudaSuccess){ fprintf(stderr, "Downloading device kmers for fast hit generation on reverse (2). Error: %d\n", ret); exit(-1); }
-                n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency, fast);
+                n_hits_found = generate_hits_sensitive(max_hits, diagonals, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency, fast);
             }
 //            else
 //#ifdef AVX512CUSTOM
@@ -1167,7 +1175,7 @@ int main(int argc, char ** argv)
                 int32_t reached_sections = -1;
                 ret = cudaMemcpy(&reached_sections, ptr_atomic_distributer, sizeof(int32_t), cudaMemcpyDeviceToHost);
                 if(ret != cudaSuccess){ fprintf(stderr, "Downloading error status on hits generation on reverse. Error: %d\n", ret); exit(-1); }
-                if(device_error < 0) { fprintf(stderr, "Error generating hits on device on reverse. Error: %d\n", device_error);  }
+                if(device_error < 0) { fprintf(stderr, "Error generating hits on device on reverse. Error: %d\n", device_error); exit(-1); }
 
                 ////////////////////////////////////////////////////////////////////////////////
                 // Hits compacting but REVERSED!
@@ -1452,7 +1460,7 @@ void print_header(FILE * out, uint32_t query_len, uint32_t ref_len){
 float factor_chooser(uint64_t total_memory)
 {
     // Hits are generated quadratically -> linearly more memory -> quadratically more hits
-    if(total_memory <=  5000000000) return 0.14;
+    if(total_memory <=  5000000000) return 0.13;
     if(total_memory <=  7000000000) return 0.11;
     if(total_memory <= 10000000000) return 0.07;
     if(total_memory <= 13000000000) return 0.05;
