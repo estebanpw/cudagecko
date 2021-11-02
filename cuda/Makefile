@@ -6,7 +6,7 @@ NVIDIAC=nvcc
 OPENCL=/usr/local/cuda-8.0/include/
 CFLAGS=-O3 -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE #-DVERBOSE
 BIN=../bin
-NVIDIAFLAGS=-O3 -rdc=true -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE -DCACHED #-DSHOWTIME #--ptxas-options=-v #-DVERBOSE #-arch=sm_50
+NVIDIAFLAGS=-O3 -rdc=true -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE -DCACHED -DSHOWTIME #--ptxas-options=-v #-DVERBOSE #-arch=sm_50
 
 # To debug a particular line: -g -lineinfo -Xcompiler -rdynamic in the NVIDIAFLAGS
 

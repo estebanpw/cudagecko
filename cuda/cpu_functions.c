@@ -588,7 +588,8 @@ void read_kmers(uint64_t query_l, char * seq_x, uint64_t * keys_x, uint64_t * va
     }
 }
 
-void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, FILE ** ref, FILE ** out, uint32_t * min_length, int * fast, uint32_t * max_frequency, float * factor, uint32_t * n_frags_per_block){
+void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, FILE ** ref, FILE ** out, uint32_t * min_length, int * fast,
+     uint32_t * max_frequency, float * factor, uint32_t * n_frags_per_block, uint64_t * _u64_SPLITHITS, float * _f_SECTIONS){
     
     int pNum = 0;
     char * p1 = NULL, * p2 = NULL;
@@ -661,6 +662,13 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
         if(strcmp(av[pNum], "-max_freq") == 0){
             *max_frequency = (uint32_t) atoi(av[pNum+1]);
             if(atoi(av[pNum+1]) < 1) { fprintf(stderr, "Frequency must be >0\n"); exit(-1); }
+        }
+
+        if(strcmp(av[pNum], "-u64splits") == 0){
+            *_u64_SPLITHITS = (uint64_t) atoi(av[pNum+1]);
+        }
+        if(strcmp(av[pNum], "-fsections") == 0){
+            *_f_SECTIONS = atof(av[pNum+1]);
         }
 
         pNum++;

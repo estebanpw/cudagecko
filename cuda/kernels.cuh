@@ -15,7 +15,7 @@ __global__ void kernel_filter_hits(uint64_t * diagonals_merged, uint32_t ref_len
 
 __global__ void kernel_find_leftmost_items(uint64_t * hashes_x, uint32_t * pos_x, uint64_t * hashes_y, uint32_t * pos_y, uint32_t limit_x, uint32_t limit_y);
 
-__global__ void kernel_compact_hits(uint64_t * ptr_device_diagonals, uint32_t * ptr_hits_log, uint32_t * ptr_accum_log, uint32_t blocks_per_section, uint32_t mem_block, uint64_t * ptr_copy_place_diagonals, uint32_t offset_remover);
+__global__ void kernel_compact_hits(uint64_t * ptr_device_diagonals, uint32_t * ptr_hits_log, uint32_t * ptr_accum_log, uint32_t mem_block, uint64_t * ptr_copy_place_diagonals, uint32_t offset_remover);
 
 __global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t * positions_x, uint32_t * positions_y, uint64_t * hit_write_section, int32_t mem_block, uint32_t limit_x, uint32_t limit_y, int32_t * error, uint32_t ref_len, uint32_t * hits_log, int32_t * atomic_distributer, uint64_t * auxiliary_hit_memory, uint32_t extra_large_memory_block, uint32_t max_extra_sections, uint32_t * hits_log_extra);//, uint64_t * messages);
 

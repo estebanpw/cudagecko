@@ -126,15 +126,19 @@ __global__ void kernel_find_leftmost_items(uint64_t * hashes_x, uint32_t * pos_x
  */
 
 
-__global__ void kernel_compact_hits(uint64_t * ptr_device_diagonals, uint32_t * ptr_hits_log, uint32_t * ptr_accum_log, uint32_t blocks_per_section, uint32_t mem_block, uint64_t * ptr_copy_place_diagonals, uint32_t offset_remover)
+__global__ void kernel_compact_hits(uint64_t * ptr_device_diagonals, uint32_t * ptr_hits_log, uint32_t * ptr_accum_log, uint32_t mem_block, uint64_t * ptr_copy_place_diagonals, uint32_t offset_remover)
 {
-    uint32_t section_idx = blockIdx.x / blocks_per_section;
-    uint32_t subblock = blockIdx.x % blocks_per_section;
-    uint32_t copy_position = section_idx * mem_block + subblock * blockDim.x;
-    uint32_t pointing_pos = subblock * blockDim.x + threadIdx.x;
+    /*
+    if(blockIdx.x == 8191 && threadIdx.x == 0){
+        printf("Hi, im from block %d. I will copy %u hits from position %u to position %u\n", blockIdx.x, ptr_hits_log[blockIdx.x], blockIdx.x * mem_block, ptr_accum_log[blockIdx.x] - offset_remover);
+    }
+    */
 
-    if(pointing_pos < ptr_hits_log[section_idx]){
-        ptr_copy_place_diagonals[ptr_accum_log[section_idx] - offset_remover + pointing_pos] = ptr_device_diagonals[copy_position + threadIdx.x];
+    for(uint32_t i=0; i<ptr_hits_log[blockIdx.x]; i+=blockDim.x){
+        
+        if(i+threadIdx.x < ptr_hits_log[blockIdx.x]){
+            ptr_copy_place_diagonals[ptr_accum_log[blockIdx.x] - offset_remover + i + threadIdx.x] = ptr_device_diagonals[blockIdx.x * mem_block + i + threadIdx.x];
+        }
     }
 
 }
