@@ -209,7 +209,7 @@ int main(int argc, char ** argv)
     pinned_address_checker = realign_address(pinned_address_checker + ref_len, 4);
 
     ref_rev_seq_host = (char *) (base_ptr_pinned + pinned_address_checker);
-    pinned_address_checker = realign_address(pinned_address_checker + ref_len, 4);
+    pinned_address_checker = realign_address(pinned_address_checker + ref_len, 256);
 
 
     if(query_seq_host == NULL || ref_seq_host == NULL || ref_rev_seq_host == NULL) terror("Could not allocate memory for sequences in host");
@@ -402,6 +402,7 @@ int main(int argc, char ** argv)
 
     int split = 0;
     uint32_t pos_in_query = 0, pos_in_ref = 0;
+
     while(pos_in_query < query_len){
 
 #ifdef SHOWTIME
@@ -411,13 +412,13 @@ int main(int argc, char ** argv)
         address_checker = 0;
         char * ptr_seq_dev_mem = &data_mem[0];
         char * base_ptr = ptr_seq_dev_mem;
-        address_checker = realign_address(address_checker + words_at_once, 8);
+        address_checker = realign_address(address_checker + words_at_once, 256);
         
         uint64_t * ptr_keys = (uint64_t *) (base_ptr + address_checker); // We have to realign because of the arbitrary length of the sequence chars
-        address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
+        address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 128);
 
         uint32_t * ptr_values = (uint32_t *) (base_ptr + address_checker); 
-        address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 8);
+        address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 256);
         uint64_t address_CHECKPOINT = address_checker;
         
 
@@ -539,10 +540,10 @@ int main(int argc, char ** argv)
             if(ret != cudaSuccess){ fprintf(stderr, "Could not copy words back in posterior iterations. Error: %d\n", ret); exit(-1); }
 
             ptr_keys_2 = (uint64_t *) (base_ptr + address_checker); // We have to realign because of the arbitrary length of the sequence chars
-            address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
+            address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 256);
 
             ptr_values_2 = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 8);
+            address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 256);
 
             // Load sequence chunk into ram
             ret = cudaMemcpy(ptr_seq_dev_mem, &ref_seq_host[pos_in_ref], items_read_y, cudaMemcpyHostToDevice);
@@ -663,13 +664,13 @@ int main(int argc, char ** argv)
                 ret = cudaDeviceSynchronize();
                 
 
-                uint64_t hits_in_first_mem_block = max_hits / _u64_SPLITHITS;
+                uint64_t hits_in_first_mem_block = max_hits / _u64_SPLITHITS; 
                 uint64_t hits_in_second_mem_block = (2 * max_hits - hits_in_first_mem_block) - 1000*1000; // Some has to be removed due to all allocated variables on pool (besides words and seq) TODO: allocate them at the beginning
                 uint64_t mem_block = (hits_in_first_mem_block)/n_blocks_hits;
+                if(mem_block % 8 != 0) mem_block -= mem_block % 8; // Each section should be a multiple of 8
                 uint64_t max_extra_sections = n_blocks_hits * _f_SECTIONS;
                 uint64_t extra_large_mem_block = (hits_in_second_mem_block)/max_extra_sections;
-
-                printf("[DEBUG] %" PRIu64" maxExtra of %" PRIu64"\n", max_extra_sections, extra_large_mem_block);
+                if(extra_large_mem_block % 8 != 0) extra_large_mem_block -= extra_large_mem_block % 8; // Each section should be a multiple of 8
 
                 ptr_hits_log_extra = (uint32_t *) (base_ptr + address_checker);
                 address_checker = realign_address(address_checker + sizeof(uint32_t) * max_extra_sections, 4);
@@ -697,9 +698,9 @@ int main(int argc, char ** argv)
                 if(leftmost_key_x >= items_read_x || leftmost_key_y >= items_read_y){ fprintf(stderr, "Bad binary search of leftmost items on forward strand. %u, %u out of [%u, %u]\n",  leftmost_key_x, leftmost_key_y, items_read_x, items_read_y); exit(-1); }
 
 
-                address_checker = realign_address(address_checker, 8);
+                address_checker = realign_address(address_checker, 256);
                 ptr_device_diagonals = (uint64_t *) (base_ptr + address_checker);
-                address_checker = realign_address(address_checker + hits_in_first_mem_block * sizeof(uint64_t), 8);
+                address_checker = realign_address(address_checker + hits_in_first_mem_block * sizeof(uint64_t), 256);
 
                 uint64_t * ptr_auxiliary_hit_memory = (uint64_t *) (base_ptr + address_checker);
                 address_checker = realign_address(address_checker + hits_in_second_mem_block * sizeof(uint64_t), 8);
@@ -833,6 +834,10 @@ int main(int argc, char ** argv)
                 free(extra_log);
                 free(accum_log);
 
+#ifdef SHOWTIME
+                fprintf(stdout, "[INFO] Max reached sections on forward = %d out of %" PRIu64"\n", reached_sections, max_extra_sections);
+#endif
+
             }
 
             if(n_hits_found > max_hits){ fprintf(stderr, "Found too many hits on forward strand (%u). Use a lower factor.\n", n_hits_found); exit(-1); }
@@ -861,7 +866,7 @@ int main(int argc, char ** argv)
 
             if(fast != 0){
                 ptr_device_diagonals = (uint64_t *) (base_ptr + address_checker);
-                address_checker = realign_address(address_checker + max_hits * sizeof(uint64_t), 8);
+                address_checker = realign_address(address_checker + max_hits * sizeof(uint64_t), 256);
                 ret = cudaMemcpy(ptr_device_diagonals, diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyHostToDevice);
                 if(ret != cudaSuccess){ fprintf(stderr, "Could not copy fast hits to device on forward strand. Error: %d\n", ret); exit(-1); }
             }
@@ -925,16 +930,16 @@ int main(int argc, char ** argv)
             address_checker = 0;
             base_ptr = &data_mem[0];
             ptr_seq_dev_mem = (char *) (base_ptr);
-            address_checker = realign_address(address_checker + words_at_once, 32);
+            address_checker = realign_address(address_checker + words_at_once, 4);
 
             ptr_seq_dev_mem_aux = (char *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + words_at_once, 32);
+            address_checker = realign_address(address_checker + words_at_once, 128);
 
             uint32_t * ptr_device_filt_hits_x = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 32);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 128);
 
             uint32_t * ptr_device_filt_hits_y = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 32);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 128);
             
 
             // For half of the hits and frags we use the memory pool and for the other half we use the prealloc pool for sorting
@@ -943,10 +948,10 @@ int main(int argc, char ** argv)
             char * base_pre_alloc_ptr = &pre_alloc[0];
 
             uint32_t * ptr_left_offset = (uint32_t *) (base_pre_alloc_ptr + address_checker_pre_alloc);
-            address_checker_pre_alloc = realign_address(address_checker_pre_alloc + max_hits * sizeof(uint32_t), 32);
+            address_checker_pre_alloc = realign_address(address_checker_pre_alloc + max_hits * sizeof(uint32_t), 128);
 
             uint32_t * ptr_right_offset = (uint32_t *) (base_pre_alloc_ptr + address_checker_pre_alloc);
-            address_checker_pre_alloc = realign_address(address_checker_pre_alloc + max_hits * sizeof(uint32_t), 32);
+            address_checker_pre_alloc = realign_address(address_checker_pre_alloc + max_hits * sizeof(uint32_t), 128);
 
             // And copy all required stuff
             ret = cudaMemcpy(ptr_seq_dev_mem, &query_seq_host[pos_in_query-words_at_once], MIN(query_len - (pos_in_query - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy query sequence to device for frags. Error: %d\n", ret); exit(-1); }
@@ -1037,10 +1042,10 @@ int main(int argc, char ** argv)
             address_checker = address_CHECKPOINT;
 
             ptr_keys_2 = (uint64_t *) (base_ptr + address_checker); // We have to realign because of the arbitrary length of the sequence chars
-            address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 4);
+            address_checker = realign_address(address_checker + words_at_once * sizeof(uint64_t), 128);
 
             ptr_values_2 = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 8);
+            address_checker = realign_address(address_checker + words_at_once * sizeof(uint32_t), 128);
 
             // Load sequence chunk into ram
             ret = cudaMemcpy(ptr_seq_dev_mem, &ref_rev_seq_host[pos_in_ref], items_read_y, cudaMemcpyHostToDevice);
@@ -1193,12 +1198,12 @@ int main(int argc, char ** argv)
 
                 if(leftmost_key_x >= items_read_x || leftmost_key_y >= items_read_y){ fprintf(stderr, "Bad binary search of leftmost items on reverse strand. %u, %u out of [%u, %u]\n",  leftmost_key_x, leftmost_key_y, items_read_x, items_read_y); exit(-1); }
 
-                address_checker = realign_address(address_checker, 8);
+                address_checker = realign_address(address_checker, 256);
                 ptr_device_diagonals = (uint64_t *) (base_ptr + address_checker);
-                address_checker = realign_address(address_checker + hits_in_first_mem_block * sizeof(uint64_t), 8);
+                address_checker = realign_address(address_checker + hits_in_first_mem_block * sizeof(uint64_t), 256);
 
                 uint64_t * ptr_auxiliary_hit_memory = (uint64_t *) (base_ptr + address_checker);
-                address_checker = realign_address(address_checker + hits_in_second_mem_block * sizeof(uint64_t), 8);
+                address_checker = realign_address(address_checker + hits_in_second_mem_block * sizeof(uint64_t), 128);
 
                 ret = cudaMemset(ptr_device_diagonals, 0xFFFFFFFF, sizeof(uint64_t)*hits_in_first_mem_block);
                 ret = cudaDeviceSynchronize();
@@ -1328,6 +1333,10 @@ int main(int argc, char ** argv)
                 free(hits_log);
                 free(extra_log);
                 free(accum_log);
+                
+#ifdef SHOWTIME
+                fprintf(stdout, "[INFO] Max reached sections on reverse = %d out of %" PRIu64"\n", reached_sections, max_extra_sections);
+#endif
 
             }
             
@@ -1358,7 +1367,7 @@ int main(int argc, char ** argv)
 
             if(fast != 0){
                 ptr_device_diagonals = (uint64_t *) (base_ptr + address_checker);
-                address_checker = realign_address(address_checker + max_hits * sizeof(uint64_t), 8);
+                address_checker = realign_address(address_checker + max_hits * sizeof(uint64_t), 128);
                 ret = cudaMemcpy(ptr_device_diagonals, diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyHostToDevice);
                 if(ret != cudaSuccess){ fprintf(stderr, "Could not copy fast hits to device on reverse strand. Error: %d\n", ret); exit(-1); }
             }
@@ -1422,13 +1431,13 @@ int main(int argc, char ** argv)
             address_checker += words_at_once;
 
             ptr_seq_dev_mem_aux = (char *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + words_at_once, 4);
+            address_checker = realign_address(address_checker + words_at_once, 128);
 
             uint32_t * ptr_device_filt_hits_x = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 128);
 
             uint32_t * ptr_device_filt_hits_y = (uint32_t *) (base_ptr + address_checker);
-            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 4);
+            address_checker = realign_address(address_checker + max_hits * sizeof(uint32_t), 128);
 
             // For half of the hits and frags we use the memory pool and for the other half we use the prealloc pool for sorting
             // Otherwise if there are too many hits they wont fit in just one pool
@@ -1436,10 +1445,10 @@ int main(int argc, char ** argv)
             char * base_pre_alloc_ptr = &pre_alloc[0];
 
             uint32_t * ptr_left_offset = (uint32_t *) (base_pre_alloc_ptr + address_checker_pre_alloc);
-            address_checker_pre_alloc = realign_address(address_checker_pre_alloc + max_hits * sizeof(uint32_t), 32);
+            address_checker_pre_alloc = realign_address(address_checker_pre_alloc + max_hits * sizeof(uint32_t), 128);
 
             uint32_t * ptr_right_offset = (uint32_t *) (base_pre_alloc_ptr + address_checker_pre_alloc);
-            address_checker_pre_alloc = realign_address(address_checker_pre_alloc + max_hits * sizeof(uint32_t), 32);
+            address_checker_pre_alloc = realign_address(address_checker_pre_alloc + max_hits * sizeof(uint32_t), 128);
 
             ret = cudaMemcpy(ptr_seq_dev_mem, &query_seq_host[pos_in_query-words_at_once], MIN(query_len - (pos_in_query - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy query sequence to device for frags. Error: %d\n", ret); exit(-1); }
             ret = cudaMemcpy(ptr_seq_dev_mem_aux, &ref_rev_seq_host[pos_in_ref-words_at_once], MIN(ref_len - (pos_in_ref - words_at_once), words_at_once), cudaMemcpyHostToDevice); if(ret != cudaSuccess){ fprintf(stderr, "Could not copy ref sequence to device for frags. Error: %d\n", ret); exit(-1); }

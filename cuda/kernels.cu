@@ -175,9 +175,6 @@ __global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t *
     uint32_t * hits_log, int32_t * atomic_distributer, uint64_t * auxiliary_hit_memory, uint32_t extra_large_memory_block, 
     uint32_t max_extra_sections, uint32_t * hits_log_extra)//, uint64_t * messages)
 {
-    // !!!!!!!!!!!!!
-    // TODO: make the x words also fully aligned to 256 
-    // !!!!!!!!!!!!!
 
     uint32_t current_mem_block = (uint32_t) mem_block;
     uint32_t accumulated = 0;
@@ -217,9 +214,10 @@ __global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t *
             uint32_t current_word_y_id = word_y_id;
             while (current_word_y_id < limit_y)
             {
+
                 // Cache current block of y-words
-                cached_keys_y[threadIdx.x] = hashes_y[current_word_y_id+threadIdx.x];
-                cached_pos_y[threadIdx.x]  = positions_y[current_word_y_id+threadIdx.x];
+                cached_keys_y[threadIdx.x] = hashes_y[current_word_y_id + threadIdx.x];     // Think about this
+                cached_pos_y[threadIdx.x]  = positions_y[current_word_y_id + threadIdx.x];  
 
                 uint32_t hit = 0;
                 // Match keys
@@ -286,7 +284,6 @@ __global__ void kernel_hits(uint64_t * hashes_x, uint64_t * hashes_y, uint32_t *
             }
 
         }
-        //if(threadIdx.x == 0 && messageID<messageMAX) messages[messageID++] = (((uint64_t)3 << 32) | word_x_id); //printf("%d Fetched next x block %d!\n", messageID++, word_x_id);
         word_x_id += blockDim.x;
         i += blockDim.x;
     }
