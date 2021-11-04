@@ -68,7 +68,7 @@ int main(int argc, char ** argv)
     
     end = clock();
 #ifdef SHOWTIME
-    fprintf(stdout, "[INFO] INIT 1 t=%f\n", (float)(end - start) / CLOCKS_PER_SEC);
+    fprintf(stdout, "[INFO] INIT 1 t= %f\n", (float)(end - start) / CLOCKS_PER_SEC);
 #endif
 
     start = clock();
@@ -312,7 +312,7 @@ int main(int argc, char ** argv)
     time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
     time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
     time_seconds *= BILLION;
-    fprintf(stdout, "[INFO] rev comp t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+    fprintf(stdout, "[INFO] rev comp t= %" PRIu64 " ns\n", time_seconds + time_nanoseconds);
     time_seconds = 0;
     time_nanoseconds = 0;
 #endif 
@@ -395,7 +395,7 @@ int main(int argc, char ** argv)
     time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
     time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
     time_seconds *= BILLION;
-    fprintf(stdout, "[INFO] INIT 3 t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+    fprintf(stdout, "[INFO] INIT 3 t= %" PRIu64 " ns\n", time_seconds + time_nanoseconds);
     time_seconds = 0;
     time_nanoseconds = 0;
 #endif
@@ -457,7 +457,7 @@ int main(int argc, char ** argv)
         time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
         time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
         time_seconds *= BILLION;
-        fprintf(stdout, "[INFO] words Q t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+        fprintf(stdout, "[INFO] words Q t= %" PRIu64 " ns\n", time_seconds + time_nanoseconds);
         time_seconds = 0;
         time_nanoseconds = 0;
 #endif
@@ -493,7 +493,7 @@ int main(int argc, char ** argv)
         time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
 
         time_seconds *= BILLION;
-        fprintf(stdout, "[INFO] sortwords Q t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+        fprintf(stdout, "[INFO] sortwords Q t= %" PRIu64 " ns\n", time_seconds + time_nanoseconds);
         time_seconds = 0;
         time_nanoseconds = 0;
 #endif 
@@ -572,7 +572,7 @@ int main(int argc, char ** argv)
             time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
             time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
             time_seconds *= BILLION;
-            fprintf(stdout, "[INFO] words R t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            fprintf(stdout, "[INFO] words R t= %" PRIu64 " ns\n", time_seconds + time_nanoseconds);
             time_seconds = 0;
             time_nanoseconds = 0;
 #endif 
@@ -600,7 +600,7 @@ int main(int argc, char ** argv)
             time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
             time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
             time_seconds *= BILLION;
-            fprintf(stdout, "[INFO] sortwords R t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            fprintf(stdout, "[INFO] sortwords R t= %" PRIu64 " ns\n", time_seconds + time_nanoseconds);
             time_seconds = 0;
             time_nanoseconds = 0;
 #endif 
@@ -847,7 +847,7 @@ int main(int argc, char ** argv)
             time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
             time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
             time_seconds *= BILLION;
-            fprintf(stdout, "[INFO] hits Q-R t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            fprintf(stdout, "[INFO] hits Q-R t= %" PRIu64 " ns\n", time_seconds + time_nanoseconds);
             time_seconds = 0;
             time_nanoseconds = 0;
             fprintf(stdout, "[INFO] Generated %" PRIu32" hits on split %d -> (%d%%)[%u,%u]{%u,%u}\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len), pos_in_query, pos_in_ref, items_read_x, items_read_y);
@@ -882,7 +882,7 @@ int main(int argc, char ** argv)
             time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
             time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
             time_seconds *= BILLION;
-            fprintf(stdout, "[INFO] sorthits Q-R t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            fprintf(stdout, "[INFO] sorthits Q-R t= %" PRIu64 " ns\n", time_seconds + time_nanoseconds);
             time_seconds = 0;
             time_nanoseconds = 0;
 #endif 
@@ -911,7 +911,7 @@ int main(int argc, char ** argv)
             time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
             time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
             time_seconds *= BILLION;
-            fprintf(stdout, "[INFO] filterhits Q-R t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            fprintf(stdout, "[INFO] filterhits Q-R t= %" PRIu64 " ns\n", time_seconds + time_nanoseconds);
             time_seconds = 0;
             time_nanoseconds = 0;
             fprintf(stdout, "[INFO] Remaining hits %" PRIu32"\n", n_hits_kept);
@@ -984,7 +984,7 @@ int main(int argc, char ** argv)
             time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
             time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
             time_seconds *= BILLION;
-            fprintf(stdout, "[INFO] frags Q-R t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            fprintf(stdout, "[INFO] frags Q-R t= %" PRIu64 " ns\n", time_seconds + time_nanoseconds);
             time_seconds = 0;
             time_nanoseconds = 0;
 #endif 
@@ -1000,7 +1000,7 @@ int main(int argc, char ** argv)
             time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
             time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
             time_seconds *= BILLION;
-            fprintf(stdout, "[INFO] filterFrags Q-R t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            fprintf(stdout, "[INFO] filterFrags Q-R t= %" PRIu64 " ns\n", time_seconds + time_nanoseconds);
             time_seconds = 0;
             time_nanoseconds = 0;
 #endif 
@@ -1082,7 +1082,7 @@ int main(int argc, char ** argv)
             time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
 
             time_seconds *= BILLION;
-            fprintf(stdout, "[INFO] words RC t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            fprintf(stdout, "[INFO] words RC t= %" PRIu64 " ns\n", time_seconds + time_nanoseconds);
             time_seconds = 0;
             time_nanoseconds = 0;
 #endif 
@@ -1111,7 +1111,7 @@ int main(int argc, char ** argv)
             time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
             time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
             time_seconds *= BILLION;
-            fprintf(stdout, "[INFO] sortwords RC t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            fprintf(stdout, "[INFO] sortwords RC t= %" PRIu64 " ns\n", time_seconds + time_nanoseconds);
             time_seconds = 0;
             time_nanoseconds = 0;
 #endif 
@@ -1348,7 +1348,7 @@ int main(int argc, char ** argv)
             time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
             time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
             time_seconds *= BILLION;
-            fprintf(stdout, "[INFO] hits Q-RC t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            fprintf(stdout, "[INFO] hits Q-RC t= %" PRIu64 " ns\n", time_seconds + time_nanoseconds);
             time_seconds = 0;
             time_nanoseconds = 0;
             fprintf(stdout, "[INFO] Generated %" PRIu32" hits on reversed split %d -> (%d%%)[%u,%u]{%u,%u}\n", n_hits_found, split, (int)((100*MIN((uint64_t)pos_in_ref, (uint64_t)ref_len))/(uint64_t)ref_len), pos_in_query, pos_in_ref, items_read_x, items_read_y);
@@ -1382,7 +1382,7 @@ int main(int argc, char ** argv)
             time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
 
             time_seconds *= BILLION;
-            fprintf(stdout, "[INFO] sortinghits Q-RC t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            fprintf(stdout, "[INFO] sortinghits Q-RC t= %" PRIu64 " ns\n", time_seconds + time_nanoseconds);
             time_seconds = 0;
             time_nanoseconds = 0;
 #endif 
@@ -1410,7 +1410,7 @@ int main(int argc, char ** argv)
             time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
 
             time_seconds *= BILLION;
-            fprintf(stdout, "[INFO] filterhits Q-RC t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            fprintf(stdout, "[INFO] filterhits Q-RC t= %" PRIu64 " ns\n", time_seconds + time_nanoseconds);
             time_seconds = 0;
             time_nanoseconds = 0;
             fprintf(stdout, "[INFO] Remaining hits %" PRIu32"\n", n_hits_kept);
@@ -1477,7 +1477,7 @@ int main(int argc, char ** argv)
             time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
             time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
             time_seconds *= BILLION;
-            fprintf(stdout, "[INFO] frags Q-RC t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            fprintf(stdout, "[INFO] frags Q-RC t= %" PRIu64 " ns\n", time_seconds + time_nanoseconds);
             time_seconds = 0;
             time_nanoseconds = 0;
 #endif 
@@ -1494,7 +1494,7 @@ int main(int argc, char ** argv)
             time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
             time_nanoseconds += ( (uint64_t) HD_end.tv_nsec - (uint64_t) HD_start.tv_nsec );
             time_seconds *= BILLION;
-            fprintf(stdout, "[INFO] filterFrags Q-RC t=%" PRIu64 " ns\n", time_seconds + time_nanoseconds);
+            fprintf(stdout, "[INFO] filterFrags Q-RC t= %" PRIu64 " ns\n", time_seconds + time_nanoseconds);
             time_seconds = 0;
             time_nanoseconds = 0;
 #endif 
