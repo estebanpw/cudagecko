@@ -589,7 +589,7 @@ void read_kmers(uint64_t query_l, char * seq_x, uint64_t * keys_x, uint64_t * va
 }
 
 void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, FILE ** ref, FILE ** out, uint32_t * min_length, int * fast,
-     uint32_t * max_frequency, float * factor, uint32_t * n_frags_per_block, uint64_t * _u64_SPLITHITS, float * _f_SECTIONS){
+     uint32_t * max_frequency, float * factor, uint32_t * n_frags_per_block, uint64_t * _u64_SPLITHITS, float * _f_SECTIONS, uint64_t * max_ram){
     
     int pNum = 0;
     char * p1 = NULL, * p2 = NULL;
@@ -606,6 +606,7 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
             fprintf(stdout, "                       (The bigger the fraction, the faster it will run - however highly similar sequences\n");
             fprintf(stdout, "                       such as human and gorilla chromosomes require a smaller fractions because of the\n");
             fprintf(stdout, "                       huge number of hits that are generated)\n");
+            fprintf(stdout, "           -ram        Max ram (in bytes) to be used by one gpu\n");
             fprintf(stdout, "           --fast      Runs in fast mode in the CPU (sensitive in GPU is default)\n");
             fprintf(stdout, "           --hyperfast Runs in hyper fast mode in the CPU\n");
             fprintf(stdout, "           --vector    Runs in sensitive mode in the CPU\n");
@@ -641,6 +642,10 @@ void init_args(int argc, char ** av, FILE ** query, unsigned * selected_device, 
             if(atoi(av[pNum+1]) < 1) { fprintf(stderr, "Length must be >0\n"); exit(-1); }
         }
 
+        if(strcmp(av[pNum], "-ram") == 0){
+            *max_ram = ascii_to_uint64t(av[pNum+1]);
+        }
+        
 
         if(strcmp(av[pNum], "-factor") == 0){
             *factor = atof(av[pNum+1]);
@@ -927,7 +932,18 @@ uint32_t binary_search_keys(uint64_t * keys, uint32_t items, uint64_t target)
     return l;
 }
 
+uint64_t ascii_to_uint64t(const char * text)
+{
+    uint64_t number = 0;
 
+    for(; *text; text++)
+    {
+        char digit = *text-'0';
+        number = (number*10) + digit;
+    }
+
+    return number;
+}
 
 
 

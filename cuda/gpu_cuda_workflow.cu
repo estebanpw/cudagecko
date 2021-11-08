@@ -32,10 +32,11 @@ int main(int argc, char ** argv)
     // Parameters for the generation of hits in the gpu
     // Do not alter these 
     uint64_t _u64_SPLITHITS = 1;
+    uint64_t global_device_RAM = 0;
     float _f_SECTIONS = 0.2;
     unsigned selected_device = 0;
     FILE * query = NULL, * ref = NULL, * out = NULL;
-    init_args(argc, argv, &query, &selected_device, &ref, &out, &min_length, &fast, &max_frequency, &factor, &n_frags_per_block, &_u64_SPLITHITS, &_f_SECTIONS);
+    init_args(argc, argv, &query, &selected_device, &ref, &out, &min_length, &fast, &max_frequency, &factor, &n_frags_per_block, &_u64_SPLITHITS, &_f_SECTIONS, &global_device_RAM);
 
     if(fast == 3)
         fprintf(stdout, "[INFO] Using AVX512 intrinsics to compute vector hits.\n");
@@ -45,7 +46,6 @@ int main(int argc, char ** argv)
     ////////////////////////////////////////////////////////////////////////////////
 
     int ret_num_devices;
-    uint64_t global_device_RAM;
     int ret;
     
     // Query how many devices there are
@@ -56,15 +56,18 @@ int main(int argc, char ** argv)
     for(i=0; i<ret_num_devices; i++){
         if( cudaSuccess != (ret = cudaGetDeviceProperties(&device, i))){ fprintf(stderr, "Failed to get cuda device property: %d\n", ret); exit(-1); }
         fprintf(stdout, "\tDevice [%" PRIu32"]: %s\n", i, device.name);
-        global_device_RAM = device.totalGlobalMem;
-        fprintf(stdout, "\t\tGlobal mem   : %" PRIu64" (%" PRIu64" MB)\n", global_device_RAM, global_device_RAM / (1024*1024));
+        uint64_t ram = device.totalGlobalMem;
+        fprintf(stdout, "\t\tGlobal mem   : %" PRIu64" (%" PRIu64" MB)\n", ram, ram / (1024*1024));
     }
 
     if( cudaSuccess != (ret = cudaSetDevice(selected_device))){ fprintf(stderr, "Failed to get cuda device property: %d\n", ret); exit(-1); }
     fprintf(stdout, "[INFO] Using device %d\n", selected_device);
 
     if( cudaSuccess != (ret = cudaGetDeviceProperties(&device, selected_device))){ fprintf(stderr, "Failed to get cuda device property: %d\n", ret); exit(-1); }
-    global_device_RAM = device.totalGlobalMem;
+    
+    // If no amount of max memory was specified by the user:
+    if(global_device_RAM == 0)
+        global_device_RAM = device.totalGlobalMem;
     
     end = clock();
 #ifdef SHOWTIME
