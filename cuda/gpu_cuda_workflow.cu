@@ -1548,10 +1548,11 @@ float factor_chooser(uint64_t total_memory)
     // Hits are generated quadratically -> linearly more memory -> quadratically more hits
     // TODO test these
     if(total_memory <=  5000000000) return 0.20;
-    if(total_memory <=  7000000000) return 0.15;
-    if(total_memory <= 10000000000) return 0.12;
-    if(total_memory <= 13000000000) return 0.08;
-    return 0.06;
+    if(total_memory <=  7000000000) return 0.20;
+    if(total_memory <= 10000000000) return 0.20;
+    if(total_memory <= 13000000000) return 0.20;
+    if(total_memory <= 20000000000) return 0.17;
+    return 0.15;
 }
 
 uint64_t memory_allocation_chooser(uint64_t total_memory)
