@@ -25,4 +25,10 @@ for((i=0; i<$SPLITS; i++)); do
 
 done
 
+
+for job in `jobs -p`
+do
+    wait $job
+done
+
 echo "Completed all MPS executions"
