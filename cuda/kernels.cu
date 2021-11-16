@@ -962,7 +962,6 @@ __global__ void kernel_register_fast_hash_rotational(uint64_t * hashes, uint64_t
     
 }
 
-
 __global__ void kernel_index_global32(uint64_t * hashes, uint32_t * positions, const char * sequence, uint32_t offset, uint32_t seq_lim) {
 
     uint64_t hash = 0, k = 0;
@@ -970,8 +969,19 @@ __global__ void kernel_index_global32(uint64_t * hashes, uint32_t * positions, c
     
     if(threadIdx.x + 32 + blockIdx.x * blockDim.x > seq_lim) return;
 
+    __shared__ char scached[24];
+
+    /*
+    scached[threadIdx.x] = sequence[threadIdx.x + blockIdx.x * blockDim.x];
+    if(threadIdx.x < 32) 
+        scached[threadIdx.x + 64] = sequence[64 + threadIdx.x + blockIdx.x * blockDim.x];
+    
+    __syncthreads();
+    */
+
     for(k=0; k<32; k++){
         char c = sequence[threadIdx.x + k + blockIdx.x * blockDim.x];
+        //char c = scached[threadIdx.x + k];
         // IF-binary
         
         /*    

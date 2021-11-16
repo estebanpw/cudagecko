@@ -455,6 +455,7 @@ int main(int argc, char ** argv)
             fprintf(stdout, "[WARNING] Zero blocks for query words\n");
         }
 
+
 #ifdef SHOWTIME
         clock_gettime(CLOCK_MONOTONIC, &HD_end);
         time_seconds += ( (uint64_t) HD_end.tv_sec - (uint64_t) HD_start.tv_sec ) ;
