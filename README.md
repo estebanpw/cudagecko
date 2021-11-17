@@ -6,9 +6,9 @@ CUDAGECKO is a GPU implementation for the large-scale, seed-and-extend GECKO alg
 
 CUDAGECKO requires a CUDA capable device that supports warp shuffle instructions.
 
-Known to work with CUDA 10.0 and maxwell devices with compute capabilitiy 5.2
+Known to work with CUDA 10.0, 10.2 and 11.5 on Maxwell, Pascal and Ampere  devices with compute capabilitiy >5.2.
 
-CUDAGECKO uses AVX512 intrinsics by default since these are widely available. If your system does not have support for AVX512 vector operations, please remove the define `-DAVX512CUSTOM` from the `NVIDIAFLAGS` flags and then recompile the binaries as explained below.
+CUDAGECKO runs completely on the GPU by default - However, you can turn on partial processing on the CPU (not faster, but useful if you have a very old GPU) using AVX512 intrinsics from the vcl vector class library. If your system is not able to compile vector operations, please remove the define `-DAVX512CUSTOM` from the `NVIDIAFLAGS` flags and then recompile the binaries as explained below.
 
 ## Installation
 
@@ -28,9 +28,11 @@ Some useful parameters:
 2. `-dev`       : ID of the gpu device to use, default: 0
 3. `-factor`    : float between 0 and 1 to select the percentage of GPU memory reserved for words, default 0.125> NOTE: lower only if running out of memory for hits
 4. `-max_freq`  : only works in --sensitive Maximum frequency per hit (default: unlimited) (fast mode can skip highly repeated seeds)
-5. `--fast`     : Runs in fast mode as opposed to sensitive which is the default (this mode skips lots of repetitive seeds)
-6. `--sensitive`: Runs in sensitive mode (default). This mode is exhaustive, ALL seeds are calculated.
-7. `--hyperfast`: Runs in hyperfast mode. This mode will match every word in one sequence to a different word in the other sequence. Only use to detect main syntenies.
+5. `-ram`       : limits the maximum amount of device RAM that can be used.
+6. `--fast`     : Runs in fast mode as opposed to sensitive which is the default (this mode skips lots of repetitive seeds)
+7. `--sensitive`: Runs in sensitive mode (default). This mode is exhaustive, ALL seeds are calculated.
+8. `--hyperfast`: Runs in hyperfast mode. This mode will match every word in one sequence to a different word in the other sequence. Only use to detect main syntenies.
+9. `--vector`   : Runs in sensitive mode but doing partial processing in the CPU. Only use if for some reason the pipeline fails.
 
 
 ## Unattended execution
@@ -52,6 +54,19 @@ In case you want to run GPUGECKO for all vs all experiments, use the following s
 `cudagecko/bin/gpu_two_species.sh <genomesDirectory1> <genomesDirectory2> <minLen> <device>`
 
 This will compare all sequences in <genomesDirectory1> to all sequences of <genomesDirectory2>
+
+## MPS execution for modern systems
+
+If your gpu has more than 4-5 GB of RAM, then it might be interesting to use the CUDA Multi Process Service, which allows to run several instances of the same CUDA application on a single GPU. This means that you can get a boost in performance if you run one instance of GPUGECKO for every 4 or 5 GB of RAM available. To use this approach, first select the appropriate device for which you wish to enable the CUDA MPS context in the script `start_as_root_mps_server.sh` in the `bin` folder (with root privileges). Once done so, simply split every comparison with the script `split_maker.sh`, namely:
+
+`./split_maker.sh reference.fasta 4`
+
+This will split the `reference.fasta` file into 4 splits, which we can then run independently at once with the following command:
+
+`for((i=0; i<4; i++)) ; do  cudagecko/bin/gpu_cuda_workflow -query query.fasta -ref reference.split$i.fasta -dev 0 -ram 4000000000 ; done`
+
+This will generate 4 splits of csvs, each one comparing the whole query with a different split of the reference.
+Once finished your MPS executions, it is advisable that you stop the MPS server by running the `stop_as_root_mps.server.sh` after having modified the device accordingly (the `-i 0`) in the file.
 
 ## Extracting alignments
 
