@@ -47,6 +47,7 @@ int main(int argc, char ** argv)
 
     int ret_num_devices;
     int ret;
+    //int sharedMemPerBlock, multiProcessorCount;
     
     // Query how many devices there are
     if(cudaSuccess != (ret = cudaGetDeviceCount(&ret_num_devices))){ fprintf(stderr, "Failed to query number of devices\n"); exit(-1); }
@@ -654,7 +655,7 @@ int main(int argc, char ** argv)
                 ////////////////////////////////////////////////////////////////////////////////
 
 
-                uint32_t n_blocks_hits = 8192;//items_read_x / 128;
+                uint32_t n_blocks_hits = 8192; //
 
                 ptr_device_error = (int32_t *) (base_ptr + address_checker);
                 address_checker = realign_address(address_checker + sizeof(int32_t), 4);
@@ -687,8 +688,10 @@ int main(int argc, char ** argv)
                 int32_t * ptr_atomic_distributer = (int32_t *) (base_ptr + address_checker);
                 address_checker = realign_address(address_checker + sizeof(int32_t), 4);
                 ret = cudaMemset(ptr_atomic_distributer, 0x00000000, sizeof(int32_t));
+                int32_t * ptr_queue = (int32_t *) (base_ptr + address_checker);
+                address_checker = realign_address(address_checker + sizeof(int32_t), 4);
+                ret = cudaMemset(ptr_queue, 0x00000000, sizeof(int32_t)); // 0x..2000 is 8192
                 ret = cudaDeviceSynchronize();
-
 
                 kernel_find_leftmost_items<<<1, 1>>>(ptr_keys, ptr_leftmost_key_x, ptr_keys_2, ptr_leftmost_key_y, items_read_x, items_read_y);
                 ret = cudaDeviceSynchronize();
@@ -717,9 +720,15 @@ int main(int argc, char ** argv)
                 ret = cudaDeviceSynchronize();
                 if(ret != cudaSuccess){ fprintf(stderr, "Setting to 0xFF..FF the extra device diagonals on forward strand. Error: %d\n", ret); exit(-1); }
 
-                kernel_hits<<<n_blocks_hits, 32>>>(ptr_keys, ptr_keys_2, ptr_values, ptr_values_2, ptr_device_diagonals, (int32_t) mem_block, 
+                ////////////////////////////////////////////////////////////////////////////////
+                // Hits-generation with load balancing (increasingly smaller sets of words)
+                ////////////////////////////////////////////////////////////////////////////////
+
+                //cudaDeviceSetLimit(cudaLimitPrintfFifoSize, 1024000*10);
+                
+                kernel_hits_load_balancing<<<n_blocks_hits, 32>>>(ptr_keys, ptr_keys_2, ptr_values, ptr_values_2, ptr_device_diagonals, (int32_t) mem_block, 
                     leftmost_key_x, leftmost_key_y, ptr_device_error, ref_len, ptr_hits_log, ptr_atomic_distributer, ptr_auxiliary_hit_memory,
-                    (uint32_t) extra_large_mem_block, (uint32_t) max_extra_sections, ptr_hits_log_extra);//, ptr_messages_log);
+                    (uint32_t) extra_large_mem_block, (uint32_t) max_extra_sections, ptr_hits_log_extra, ptr_queue);//, ptr_messages_log);
 
                 ret = cudaDeviceSynchronize();
 
@@ -1188,6 +1197,9 @@ int main(int argc, char ** argv)
                 int32_t * ptr_atomic_distributer = (int32_t *) (base_ptr + address_checker);
                 address_checker = realign_address(address_checker + sizeof(int32_t), 4);
                 ret = cudaMemset(ptr_atomic_distributer, 0x00000000, sizeof(int32_t));
+                int32_t * ptr_queue = (int32_t *) (base_ptr + address_checker);
+                address_checker = realign_address(address_checker + sizeof(int32_t), 4);
+                ret = cudaMemset(ptr_queue, 0x00000000, sizeof(int32_t)); // 0x..2000 is 8192
                 ret = cudaDeviceSynchronize();
 
 
@@ -1217,10 +1229,14 @@ int main(int argc, char ** argv)
                 ret = cudaDeviceSynchronize();
                 if(ret != cudaSuccess){ fprintf(stderr, "Setting to 0xFF..FF the extra device diagonals on the reverse. Error: %d\n", ret); exit(-1); }
                 
+                ////////////////////////////////////////////////////////////////////////////////
+                // Hits-generation with load balancing (increasingly smaller sets of words)
+                ////////////////////////////////////////////////////////////////////////////////
 
-                kernel_hits<<<n_blocks_hits, 32>>>(ptr_keys, ptr_keys_2, ptr_values, ptr_values_2, ptr_device_diagonals, (int32_t) mem_block, 
+
+                kernel_hits_load_balancing<<<n_blocks_hits, 32>>>(ptr_keys, ptr_keys_2, ptr_values, ptr_values_2, ptr_device_diagonals, (int32_t) mem_block, 
                     leftmost_key_x, leftmost_key_y, ptr_device_error, ref_len, ptr_hits_log, ptr_atomic_distributer, ptr_auxiliary_hit_memory,
-                    (uint32_t) extra_large_mem_block, (uint32_t) max_extra_sections, ptr_hits_log_extra);//, ptr_messages_log);
+                    (uint32_t) extra_large_mem_block, (uint32_t) max_extra_sections, ptr_hits_log_extra, ptr_queue);//, ptr_messages_log);
 
                 ret = cudaDeviceSynchronize();
 
