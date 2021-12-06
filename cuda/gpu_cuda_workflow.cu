@@ -47,6 +47,7 @@ int main(int argc, char ** argv)
 
     int ret_num_devices;
     int ret;
+    
     //int sharedMemPerBlock, multiProcessorCount;
     
     // Query how many devices there are
@@ -69,6 +70,9 @@ int main(int argc, char ** argv)
     // If no amount of max memory was specified by the user:
     if(global_device_RAM == 0)
         global_device_RAM = device.totalGlobalMem;
+
+    // Select blocks
+    uint32_t insider_kernel_blocks = (uint32_t) device.multiProcessorCount * (uint32_t) (device.sharedMemPerBlock / 768); // 768 b is how much shared memory is used by hits kernel
     
     end = clock();
 #ifdef SHOWTIME
@@ -447,6 +451,7 @@ int main(int argc, char ** argv)
         number_of_blocks = (items_read_x - KMER_SIZE + 1)/(64) + 1;
         if(number_of_blocks != 0)
         {
+            //cudaProfilerStart();
             kernel_index_global32<<<number_of_blocks, 64>>>(ptr_keys, ptr_values, ptr_seq_dev_mem, pos_in_query, items_read_x);
             ret = cudaDeviceSynchronize();
             if(ret != cudaSuccess){ fprintf(stderr, "Could not compute kmers on query. Error: %d\n", ret); exit(-1); }
@@ -655,7 +660,7 @@ int main(int argc, char ** argv)
                 ////////////////////////////////////////////////////////////////////////////////
 
 
-                uint32_t n_blocks_hits = 8192; //
+                uint32_t n_blocks_hits = insider_kernel_blocks; //insider_kernel_blocks; //
 
                 ptr_device_error = (int32_t *) (base_ptr + address_checker);
                 address_checker = realign_address(address_checker + sizeof(int32_t), 4);
@@ -906,8 +911,14 @@ int main(int argc, char ** argv)
             clock_gettime(CLOCK_MONOTONIC, &HD_start);
 #endif
 
+            //cudaProfilerStart();
+            //kernel_filter_hits_parallel_shared<<<n_hits_found/(64)+1, 64>>>(ptr_device_diagonals, ref_len, n_hits_found);
             kernel_filter_hits_parallel<<<n_hits_found/(64)+1, 64>>>(ptr_device_diagonals, ref_len, n_hits_found);
             ret = cudaDeviceSynchronize();
+            //cudaProfilerStop();
+            //return 0;
+
+
             if(ret != cudaSuccess){ fprintf(stderr, "FILTER HITS failed on query-ref hits. Error: %d -> %s\n", ret, cudaGetErrorString(cudaGetLastError())); exit(-1); }
 
             ret = cudaMemcpy(diagonals, ptr_device_diagonals, n_hits_found*sizeof(uint64_t), cudaMemcpyDeviceToHost);
@@ -1166,7 +1177,7 @@ int main(int argc, char ** argv)
 //                n_hits_found = generate_hits_sensitive(max_hits, diagonals, hits, dict_x_keys, dict_y_keys, dict_x_values, dict_y_values, items_read_x, items_read_y, query_len, ref_len, max_frequency, fast);
 //#endif
             else{
-                uint32_t n_blocks_hits = 8192;
+                uint32_t n_blocks_hits = insider_kernel_blocks;
 
                 ptr_device_error = (int32_t *) (base_ptr + address_checker);
                 address_checker = realign_address(address_checker + sizeof(int32_t), 4);

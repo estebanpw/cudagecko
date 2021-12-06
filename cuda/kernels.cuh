@@ -9,6 +9,8 @@
 #define ULLI unsigned long long int
 #define LLI  long long int
 
+__global__ void kernel_filter_hits_parallel_shared(uint64_t * diagonals_merged, uint32_t ref_len, uint32_t n_hits_found);
+
 __global__ void kernel_filter_hits_parallel(uint64_t * diagonals_merged, uint32_t ref_len, uint32_t n_hits_found);
 
 __global__ void kernel_filter_hits(uint64_t * diagonals_merged, uint32_t ref_len, uint32_t n_hits_found);
