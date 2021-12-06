@@ -2,7 +2,7 @@
 // Standard utilities and common systems includes
 #include "kernels.cuh"
 #include "cpu_functions.c"
-#include "cub/cub.cuh"
+//#include "cub/cub.cuh"
 #include <moderngpu/kernel_mergesort.hxx>
 #include <cuda_profiler_api.h>
 
@@ -33,7 +33,7 @@ int main(int argc, char ** argv)
     // Do not alter these 
     uint64_t _u64_SPLITHITS = 1;
     uint64_t global_device_RAM = 0;
-    float _f_SECTIONS = 0.2;
+    float _f_SECTIONS = 0.75;
     unsigned selected_device = 0;
     FILE * query = NULL, * ref = NULL, * out = NULL;
     init_args(argc, argv, &query, &selected_device, &ref, &out, &min_length, &fast, &max_frequency, &factor, &n_frags_per_block, &_u64_SPLITHITS, &_f_SECTIONS, &global_device_RAM);
